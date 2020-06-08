@@ -27,9 +27,9 @@
 
 
 runUI <- function() {
-  appDir <- system.file("shiny", "DDAiceR_UI", package = "DDAiceR")
+  appDir <- system.file("shiny", "IceR_UI", package = "IceR")
   if (appDir == "") {
-    stop("Could not find UI directory. Try re-installing `DDAiceR`.", call. = FALSE)
+    stop("Could not find UI directory. Try re-installing `IceR`.", call. = FALSE)
   }
 
   shiny::runApp(appDir, display.mode = "normal")

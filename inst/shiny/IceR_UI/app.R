@@ -1,4 +1,4 @@
-library(DDAiceR)
+library(IceR)
 library(openxlsx)
 library(shiny)
 library(shinyFiles)
@@ -35,10 +35,10 @@ run_panel <- fluidPage(
 
     column(3,
            h3("Results folder"),
-           actionButton("DDAiceR_output", "Choose directory",width = 170),
-           #shinyDirButton("DDAiceR_output", "Choose directory", "Select folder where results should be stored"),
-           verbatimTextOutput("DDAiceR_output", placeholder = TRUE),
-           helpText("Select the folder where the DDAiceR results should be saved")
+           actionButton("IceR_output", "Choose directory",width = 170),
+           #shinyDirButton("IceR_output", "Choose directory", "Select folder where results should be stored"),
+           verbatimTextOutput("IceR_output", placeholder = TRUE),
+           helpText("Select the folder where the IceR results should be saved")
     )
 
   ),
@@ -47,7 +47,7 @@ run_panel <- fluidPage(
 
     column(3,
            textInput("Analysis_name", h3("Analysis name"),
-                     value = "DDAiceR_analysis"),
+                     value = "IceR_analysis"),
            helpText("Specify how the analysis results should be named.")
     ),
 
@@ -185,7 +185,7 @@ ui <- fluidPage(
              ".shiny-output-error { visibility: hidden; }",
              ".shiny-output-error:before { visibility: hidden; }"
   ),
-  titlePanel(strong("DDAiceR")),
+  titlePanel(strong("IceR")),
 
   tabsetPanel(type = "tabs",
               tabPanel("Run", run_panel),
@@ -215,9 +215,9 @@ run_all_processes <- function(settings_list)
 
   path_to_mzXML <- paste(settings_list$Raw_folder,"/","mzXML",sep="")
 
-  path_to_output <- ifelse(endsWith(settings_list$DDAiceR_output,"/"),
-                           substr(settings_list$DDAiceR_output,1,nchar(settings_list$DDAiceR_output)-1),
-                           settings_list$DDAiceR_output)
+  path_to_output <- ifelse(endsWith(settings_list$IceR_output,"/"),
+                           substr(settings_list$IceR_output,1,nchar(settings_list$IceR_output)-1),
+                           settings_list$IceR_output)
   min_mz_window <- ifelse(settings_list$min_mz_window > 0,settings_list$min_mz_window,NA)
   mz_window <- ifelse(settings_list$mz_window > 0,settings_list$mz_window,NA)
   min_RT_window <- ifelse(settings_list$min_RT_window > 0,settings_list$min_RT_window,NA)
@@ -389,7 +389,7 @@ server <- function(input, output,session){
   ###select file paths
   global_MaxQ_output_folder <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\MaxQ_Output")#getwd())
   global_Raw_folder <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\test_shiny\\raw")#getwd())
-  global_DDAiceR_output <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\test_shiny\\Results_folder")#getwd())
+  global_IceR_output <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\test_shiny\\Results_folder")#getwd())
 
   volumes <- getVolumes()
 
@@ -469,37 +469,37 @@ server <- function(input, output,session){
 
 
 
-  ###choose DDAiceR output folder
+  ###choose IceR output folder
   # shinyDirChoose(
   #   input,
-  #   'DDAiceR_output',
+  #   'IceR_output',
   #   roots = getVolumes(),
   #   #filetypes = c('', 'txt', 'bigWig', "tsv", "csv", "bw")
   # )
-  DDAiceR_output <- reactive({
-    return(parseDirPath(volumes, input$DDAiceR_output))
+  IceR_output <- reactive({
+    return(parseDirPath(volumes, input$IceR_output))
   })
 
-  output$DDAiceR_output <- renderText({
-    global_DDAiceR_output$datapath
+  output$IceR_output <- renderText({
+    global_IceR_output$datapath
   })
 
   # observe({
-  #   if(!is.null(DDAiceR_output)){
+  #   if(!is.null(IceR_output)){
   #     handlerExpr = {
-  #       req(nchar(DDAiceR_output())>0)
-  #       global_DDAiceR_output$datapath <- paste0(DDAiceR_output(),"/")
+  #       req(nchar(IceR_output())>0)
+  #       global_IceR_output$datapath <- paste0(IceR_output(),"/")
   #     }
   #   }
   # })
 
-  observeEvent(input$DDAiceR_output, {
+  observeEvent(input$IceR_output, {
 
     selected_folder <- choose.dir(caption = "Choose final output folder")
     if(!is.na(selected_folder))
     {
       selected_folder <- gsub("\\\\","/",selected_folder)
-      global_DDAiceR_output$datapath <- selected_folder#paste0(selected_folder,"\\")
+      global_IceR_output$datapath <- selected_folder#paste0(selected_folder,"\\")
     }
   })
 
@@ -511,7 +511,7 @@ server <- function(input, output,session){
 
     settings_list <- list(MaxQ_output_folder=global_MaxQ_output_folder$datapath,
                           Raw_folder=global_Raw_folder$datapath,
-                          DDAiceR_output = global_DDAiceR_output$datapath,
+                          IceR_output = global_IceR_output$datapath,
                           min_RT_window = input$min_RT_window,
                           RT_window = input$RT_window,
                           min_mz_window = input$min_mz_window,
@@ -534,7 +534,7 @@ server <- function(input, output,session){
     selected_parameters <- vector("character",0)
     Filters_temp <- rbind(Filters,c("Excel files (*.xlsx)","*.xlsx"))
     rownames(Filters_temp)[nrow(Filters_temp)] <- "xlsx"
-    if (interactive() && .Platform$OS.type == "windows")selected_parameters <- choose.files(caption = "Select DDAiceR parameters file",multi = F,filters = Filters_temp[c("All","xlsx"),])
+    if (interactive() && .Platform$OS.type == "windows")selected_parameters <- choose.files(caption = "Select IceR parameters file",multi = F,filters = Filters_temp[c("All","xlsx"),])
     if(length(selected_parameters)>0)
     {
       temp_settings <- read.xlsx(selected_parameters)
@@ -542,7 +542,7 @@ server <- function(input, output,session){
 
       global_Raw_folder$datapath <- temp_settings$Setting[1]
       global_MaxQ_output_folder$datapath <- temp_settings$Setting[2]
-      global_DDAiceR_output$datapath <- temp_settings$Setting[3]
+      global_IceR_output$datapath <- temp_settings$Setting[3]
 
       updateTextInput(session,"Analysis_name",value = temp_settings$Setting[4])
       updateSliderInput(session, "mz_window", min = 0, max = 0.01, value = as.numeric(temp_settings$Setting[5]),step=0.0005)
@@ -589,7 +589,7 @@ server <- function(input, output,session){
   ###Load QC data
 
   observeEvent(input$vis_qc_alignment, {
-    path_to_QC_files <- paste(global_DDAiceR_output$datapath,"\\Temporary_files",sep="")
+    path_to_QC_files <- paste(global_IceR_output$datapath,"\\Temporary_files",sep="")
 
     load(paste(path_to_QC_files,"\\Feature_alignment_QC_data.RData",sep=""))
 
@@ -651,7 +651,7 @@ server <- function(input, output,session){
   })
 
   observeEvent(input$vis_qc_quantification, {
-    path_to_QC_files <- paste(global_DDAiceR_output$datapath,"\\Temporary_files",sep="")
+    path_to_QC_files <- paste(global_IceR_output$datapath,"\\Temporary_files",sep="")
 
     load(paste(path_to_QC_files,"\\Feature_quantification_QC_data.RData",sep=""))
 
@@ -878,5 +878,5 @@ visualize_S2B <- function(QC_data)
 # Run the application
 shinyApp(ui = ui, server = server)
 
-#runApp("C:\\PostDoc_Kalxdorf\\0_General\\Projects\\Proteome_Requantification\\DDAiceR_UI")
+#runApp("C:\\PostDoc_Kalxdorf\\0_General\\Projects\\Proteome_Requantification\\IceR_UI")
 
