@@ -360,7 +360,6 @@ run_all_processes <- function(settings_list)
                         output_file_names_add=settings_list$analysis_name,
                         RT_calibration=RT_calibration,
                         mz_calibration=mz_calibration,
-                        peak_detection = peak_detection,
                         n_cores = n_cores,
                         abundance_estimation_correction = intensity_correction,
                         Quant_pVal_cut = settings_list$Quant_pVal_cut,

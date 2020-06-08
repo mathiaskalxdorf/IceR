@@ -25,8 +25,8 @@
 '%!in%' <- function(x,y)!('%in%'(x,y))
 '%not in%' <- function(x,y)!('%in%'(x,y))
 
-
-runUI <- function() {
+#' Start GUI of IceR
+runIceR <- function() {
   appDir <- system.file("shiny", "IceR_UI", package = "IceR")
   if (appDir == "") {
     stop("Could not find UI directory. Try re-installing `IceR`.", call. = FALSE)
@@ -35,6 +35,10 @@ runUI <- function() {
   shiny::runApp(appDir, display.mode = "normal")
 }
 
+#' Save data.frames or list of data.frames as xlsx-files.
+#' @param Data Object of type data.frame or list
+#' @param File File name of xlsx-file
+#' @return xlsx-file
 
 ###Save data.frames or list of data.frames as xlsx file (with separate tabs per list item)
 ###Data = Data.frame or list of data.frames to be saved
@@ -58,15 +62,19 @@ SaveExcel = function(Data,File)
   saveWorkbook(wb, File, overwrite = TRUE)
 }
 
-####################################################################
-########Handling MaxQ and Requant data##############################
-####################################################################
-####Load MaxQ data from summary folder
-####Returns prefiltered Protein and Peptide data as separate lists
-####if path is directly specified it has to end with \\
-load_MaxQ_data <- function(path=NA,remove_contaminants=T,remove_reverse=T,intensity_used=c("LFQ intensity","iBAQ","Intensity"))
+#' Load MaxQuant result files
+#' @param path Optional path to folder containing MaxQuant outputs. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\
+#' @param min_pep_count Minimal required number of quantified peptides per protein. By default set to 1.
+#' @param min_pep_count_criteria Criteria how to count quantified peptides per protein. Either all or only unique peptides are counted. By default set to "all".
+#' @param remove_contaminants Boolean value indicating if contaminants should be removed. By default set to T.
+#' @param remove_reverse Boolean value indicating if reverse hits should be removed. By default set to T.
+#' @param intensity_used Specifying which protein quantification data should be used. Selection between "LFQ intensity", "iBAQ" or "Intensity". By default set to "LFQ intensity". Requires corresponding quantification results to be calculated by MaxQuant and stored in respective columns.
+#' @details Wrapper function to load and filter MaxQuant results.
+#' @return List object containing protein and peptide quantification information in sub-lists named Protein_level and Peptide_level, respectively.
+load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all","unique"),remove_contaminants=T,remove_reverse=T,intensity_used=c("LFQ intensity","iBAQ","Intensity"))
 {
   options(warn=-1)
+  min_pep_count_criteria <- min_pep_count_criteria[1]
   if(is.na(path))
   {
     print("Select a file in the MaxQ output folder")
@@ -103,7 +111,8 @@ load_MaxQ_data <- function(path=NA,remove_contaminants=T,remove_reverse=T,intens
   data_peptide_quant <- data_peptide[,which(grepl("Intensity\\.",colnames(data_peptide)))]
 
   ###Extract number of quantified peptides per protein and sample
-  data_protein_peptide_count <- data_protein[,which(grepl("^Peptides\\.",colnames(data_protein)))]
+  if(min_pep_count_criteria == "all")data_protein_peptide_count <- data_protein[,which(grepl("^Peptides\\.",colnames(data_protein)))]
+  if(min_pep_count_criteria == "unique")data_protein_peptide_count <- data_protein[,which(grepl("^Unique\\.peptides\\.",colnames(data_protein)))]
 
   ###missing values are marked as NA
   data_protein_quant[data_protein_quant == 0] <- NA
@@ -161,34 +170,56 @@ load_MaxQ_data <- function(path=NA,remove_contaminants=T,remove_reverse=T,intens
   rownames(data_protein_peptide_count) <- data_protein_info$Gene_name
   rownames(data_peptide_quant) <- data_peptide_info$Sequence
 
-  return(list(Protein_level=list(Quant_data=data_protein_quant,Meta_data=data_protein_info,Num_peptides_per_quant=data_protein_peptide_count),Peptide_level=list(Quant_data=data_peptide_quant,Meta_data=data_peptide_info)))
+  ###check if all protein quantifications were based on at least min_pep_count numbers of peptides
+  data_protein_quant[data_protein_peptide_count < min_pep_count] <- NA
+
+  ##remove rows which are showing only missing values
+  sel <- which(rowSums(!is.na(data_protein_quant)) > 0)
+  data_protein_quant <- data_protein_quant[sel,]
+  data_protein_info <- data_protein_info[sel,]
+  data_protein_peptide_count <- data_protein_peptide_count[sel,]
+
+  sel <- which(rowSums(!is.na(data_peptide_quant)) > 0)
+  data_peptide_quant <- data_peptide_quant[sel,]
+  data_peptide_info <- data_peptide_info[sel,]
+
+  return(list(Protein_level=list(Quant_data=data_protein_quant,Meta_data=data_protein_info,Num_peptides_per_quant=data_protein_peptide_count),
+              Peptide_level=list(Quant_data=data_peptide_quant,Meta_data=data_peptide_info)))
 
   options(warn=0)
 }
 
-####Load Requant data from output folder
-####Returns prefiltered Protein and feature data as separate lists
-####if paths are directly specified it has to end with \\
-load_Requant_data <- function(path_to_requant_folder=NA,file_name_extension=NA,path_MaxQ=NA,quant_value=c("LFQ","Total","Top3"),imputed=T)
+#' Load IceR result files
+#' @param path_to_requant_folder Optional path to folder containing IceR outputs. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\
+#' @param file_name_extension Optional file name extension of IceR output files. Only required if path_to_requant_folder directly specified.
+#' @param path_MaxQ Optional path to folder containing MaxQuant outputs. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\
+#' @param quant_value Specifying which protein quantification data should be used. Selection between "LFQ", "Total" or "Top3". By default set to "LFQ".
+#' @param min_feat_count Minimal required number of quantified features per protein. By default set to 1.
+#' @param min_feat_count_criteria Criteria how to count quantified features per protein. Either all or only unique peptide features are counted. By default set to "all".
+#' @param imputed Boolean value indicating if data with noise model based imputation should be used. By default set to T.
+#' @details Wrapper function to load and filter IceR results.
+#' @return List object containing protein and peptide quantification information in sub-lists named Protein_level and Peptide_level, respectively.
+load_Requant_data <- function(path_to_requant_folder=NA,file_name_extension=NA,path_MaxQ=NA,quant_value=c("LFQ","Total","Top3"),min_feat_count=1,min_feat_count_criteria=c("all","unique"),imputed=T)
 {
   options(warn=-1)
   library(openxlsx)
   quant_value <- quant_value[1]
+  min_feat_count_criteria <- min_feat_count_criteria[1]
   if(is.na(path_to_requant_folder) | is.na(file_name_extension))
   {
-    print("Select Features_quantification.xlsx file")
+    print("Select Features_x.tab file")
     path_to_requant <- file.choose()
     temp <- unlist(gregexpr("\\\\",path_to_requant))
     path_to_requant_folder <- substr(path_to_requant,1,temp[length(temp)])
     file_name_extension <- substr(path_to_requant,temp[length(temp)]+1,200)
-    file_name_extension <- gsub("Features_quantification|\\.xlsx","",file_name_extension)
-    print(paste("Selected path to MaxRequanteR output:",path_to_requant_folder))
-    print(paste("Selected MaxRequanteR output name:",file_name_extension))
+    file_name_extension <- gsub("Features_|\\.tab","",file_name_extension)
+    print(paste("Selected path to DDAiceR output:",path_to_requant_folder))
+    print(paste("Selected DDAiceR output name:",file_name_extension))
   }else
   {
     file_name_extension <- paste("_",file_name_extension,sep="")
-    print(paste("Selected path to MaxRequanteR output:",path_to_requant_folder))
-    print(paste("Selected MaxRequanteR output name:",file_name_extension))
+    print(paste("Selected path to DDAiceR output:",path_to_requant_folder))
+    print(paste("Selected DDAiceR output name:",file_name_extension))
   }
 
   if(is.na(path_MaxQ))
@@ -217,27 +248,16 @@ load_Requant_data <- function(path_to_requant_folder=NA,file_name_extension=NA,p
   if(quant_value == "LFQ" & imputed == T)protein_quant_tab <- "LFQ_imputed"
 
 
-
-  if(imputed == F)feature_quant_tab <- "Quantification"
-  if(imputed == T)feature_quant_tab <- "Quantification_imputed"
-
-
-  sheets_protein <- getSheetNames(paste(path_to_requant_folder,"Proteins_quantification",file_name_extension,".xlsx",sep=""))
-  sheets_features <- getSheetNames(paste(path_to_requant_folder,"Features_quantification",file_name_extension,".xlsx",sep=""))
-
-  ###protein level data
-  if(imputed == T & protein_quant_tab %not in% sheets_protein)protein_quant_tab <- gsub("_imputed","",protein_quant_tab)
-
-  data_protein <- read.xlsx(paste(path_to_requant_folder,"Proteins_quantification",file_name_extension,".xlsx",sep=""),protein_quant_tab)
+  data_protein <- read.table(paste(path_to_requant_folder,"Proteins_quantification_",protein_quant_tab,file_name_extension,".tab",sep=""),header = T,sep = "\t")
   colnames(data_protein) <- gsub("^X","",colnames(data_protein))
 
-  ###feature level data
-  if(imputed == T & feature_quant_tab %not in% sheets_features)feature_quant_tab <- gsub("_imputed","",feature_quant_tab)
-  features <- read.xlsx(paste(path_to_requant_folder,"Features_quantification",file_name_extension,".xlsx",sep=""),"features",skipEmptyRows = F)
-  features_sample_matrix <- read.xlsx(paste(path_to_requant_folder,"Features_quantification",file_name_extension,".xlsx",sep=""),feature_quant_tab,skipEmptyRows = F)
-  features_sample_matrix_counts <- read.xlsx(paste(path_to_requant_folder,"Features_quantification",file_name_extension,".xlsx",sep=""),"Ion_count",skipEmptyRows = F)
-  features_sample_matrix_pvals <- read.xlsx(paste(path_to_requant_folder,"Features_quantification",file_name_extension,".xlsx",sep=""),"Quantification_pvals",skipEmptyRows = F)
-  features_sample_matrix_S2B <- read.xlsx(paste(path_to_requant_folder,"Features_quantification",file_name_extension,".xlsx",sep=""),"Signal_to_background",skipEmptyRows = F)
+  features <- read.table(paste(path_to_requant_folder,"Features",file_name_extension,".tab",sep=""),header=T,sep = "\t")
+  features_sample_matrix <- read.table(paste(path_to_requant_folder,"Features_quantification",ifelse(imputed==T,"_imputed",""),file_name_extension,".tab",sep=""),header=T,sep = "\t")
+  features_sample_matrix_counts <- read.table(paste(path_to_requant_folder,"Features_quantification_ioncount",file_name_extension,".tab",sep=""),header=T,sep = "\t")
+  features_sample_matrix_pvals <- read.table(paste(path_to_requant_folder,"Features_quantification_pvals",file_name_extension,".tab",sep=""),header=T,sep = "\t")
+  features_sample_matrix_S2B <- read.table(paste(path_to_requant_folder,"Features_quantification_S2B",file_name_extension,".tab",sep=""),header=T,sep = "\t")
+
+
 
   data_protein_quant <- data_protein[,which(!grepl("median_alignment_score|median_quant_pvals|median_S2B",colnames(data_protein)))[-c(1:3)]]
   data_protein_pvals <- data_protein[,which(grepl("median_quant_pvals",colnames(data_protein)))]
@@ -335,6 +355,43 @@ load_Requant_data <- function(path_to_requant_folder=NA,file_name_extension=NA,p
   rownames(features_sample_matrix_pvals) <- data_peptide_info$Feature_name
   rownames(features_sample_matrix_S2B) <- data_peptide_info$Feature_name
 
+
+  ###check if all protein quantifications were based on at least min_pep_count numbers of peptides
+  #determine num of available peps per protein level quantification
+  temp <- copy(features_sample_matrix)
+  temp[!is.na(temp)] <- 1
+  temp[is.na(temp)] <- 0
+  if(min_feat_count_criteria == "unique")
+  {
+    temp <- aggregate(temp,by=list(Sequence=features$Sequence),FUN=max,na.rm=T)
+    temp_id <- features$Protein[match(temp$Sequence,features$Sequence)]
+    temp <- temp[,-1]
+    count_feat_per_ID <- aggregate(temp,by=list(ID=temp_id),FUN=sum,na.rm=T)
+  }else
+  {
+    count_feat_per_ID <- aggregate(temp,by=list(ID=features$Protein),FUN=sum,na.rm=T)
+  }
+  count_feat_per_ID <- count_feat_per_ID[match(data_protein_info$ID,count_feat_per_ID$ID),]
+  #rownames(count_feat_per_ID) <- make.unique(as.character(count_feat_per_ID$ID))
+  count_feat_per_ID <- count_feat_per_ID[,-1]
+  data_protein_quant[count_feat_per_ID < min_feat_count] <- NA
+
+  ##remove rows which are showing only missing values
+  sel <- which(rowSums(!is.na(data_protein_quant)) > 0)
+  data_protein_quant <- data_protein_quant[sel,]
+  data_protein_info <- data_protein_info[sel,]
+  data_protein_pvals <- data_protein_pvals[sel,]
+  data_protein_S2B <- data_protein_S2B[sel,]
+
+  sel <- which(rowSums(!is.na(features_sample_matrix)) > 0)
+  features_sample_matrix <- features_sample_matrix[sel,]
+  features_sample_matrix_counts <- features_sample_matrix_counts[sel,]
+  features_sample_matrix_pvals <- features_sample_matrix_pvals[sel,]
+  features_sample_matrix_S2B <- features_sample_matrix_S2B[sel,]
+  data_peptide_info <- data_peptide_info[sel,]
+  features <- features[sel,]
+
+
   return(list(Protein_level=list(Quant_data=data_protein_quant,
                                  Meta_data=data_protein_info,
                                  Quant_pVal=data_protein_pvals,
@@ -348,15 +405,22 @@ load_Requant_data <- function(path_to_requant_folder=NA,file_name_extension=NA,p
   options(warn=0)
 }
 
-###Adds sample annotation information to Protein and Peptide quant data
-###Annotation information in rows with nrow = ncol of quant data in data_list containing protein and peptide level data
+#' Adds sample annotation information to loaded MaxQuant or IceR data
+#' @param data_list List object containing loaded MaxQuant or IceR data
+#' @param Annotations Table with at least one column containing annotation information. Rows have to correspond to samples in loaded MaxQuant or IceR data. Requires same order of sampels (rows) as e.g. sampels (columns) in data_list$Protein_level$Quant_data
+#' @details Add sample annotation to loaded MaxQuant or IceR data.
+#' @return List object containing loaded MaxQuant or IceR data extended by annotation information
 add_annotations <- function(data_list,Annotations)
 {
   data_list$Annotations <- Annotations
   return(data_list)
 }
 
-###Change column names (sample names)
+#' Change sample (column) names of loaded MaxQuant or IceR data
+#' @param data_list List object containing loaded MaxQuant or IceR data
+#' @param sample_names Character vector of new names of same length as number of samples in MaxQuant or IceR data.
+#' @details Change sample names.
+#' @return List object containing loaded MaxQuant or IceR data with updated sample names.
 set_sample_names <- function(data_list,sample_names)
 {
   if("Quant_data" %in% names(data_list$Protein_level))colnames(data_list$Protein_level$Quant_data) <- sample_names
@@ -367,7 +431,10 @@ set_sample_names <- function(data_list,sample_names)
   return(data_list)
 }
 
-###Determine general numbers of the data set like number of proteins, number of peptides and number of missing values
+#' Determine general identification and quantification numbers
+#' @param data_list List object containing loaded MaxQuant or IceR data
+#' @details Determine general numbers of the data set like number of proteins, number of peptides and number of missing values
+#' @return List object containing loaded MaxQuant or IceR data extended with general number information.
 determine_general_numbers <- function(data_list)
 {
   if("Protein_level" %in% names(data_list))
@@ -408,8 +475,10 @@ determine_general_numbers <- function(data_list)
     data_list$Peptide_level$missing_values <- temp
 
     ###number of peptides
-    temp <- length(unique(data_list$Peptide_level$Meta_data$Sequence))
-    names(temp) <- "num_peptides"
+    temp <- data_list$Peptide_level$Meta_data
+    temp <- temp[!duplicated(temp$Sequence),]
+    temp <- plyr::count(temp$Organism)
+    colnames(temp) <- c("Organism","Count")
     data_list$Peptide_level$num_peptides <- temp
 
     ###number of peptides per samples
@@ -420,11 +489,17 @@ determine_general_numbers <- function(data_list)
   return(data_list)
 }
 
-###Compare general numbers in plots
-###list_of_data_lists = named ist of data_lists e.g. list(MaxQ=MaxQ_data,Requant=Requant_data)
-###colors = colors which should be used per sample
+#' Compare general numbers between data sets
+#' @param list_of_data_lists List object containing lists of loaded MaxQuant or IceR data
+#' @param colors Colors for data sets to be compared. By default two colors are specified ("darkgrey","chocolate3")
+#' @param Legendpos Location of legend, By default set to "top"
+#' @param margins Margins aroung plot area. By default set to c(12,4,4,9)
+#' @param inset Inset of legend. By default set to c(-0.435,0)
+#' @details Compare general numbers between data sets
+#' @return Comparison plots
 compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),Legendpos = "top",margins=c(12,4,4,9),inset=c(-0.435,0))
 {
+  library(rowr)
   ###protein numbers
   dat_prot <- NULL
   names_available=NULL
@@ -454,7 +529,6 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
 
   ###peptide numbers
   dat_peps <- NULL
-  names_available=NULL
   for(i in names(list_of_data_lists))
   {
     if("Peptide_level" %in% names(list_of_data_lists[[i]]))
@@ -464,16 +538,17 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
         dat_peps <- list_of_data_lists[[i]]$Peptide_level$num_peptides
       }else
       {
-        dat_peps <- append(dat_peps,list_of_data_lists[[i]]$Peptide_level$num_peptides)
+        dat_peps <- full_join(dat_peps,list_of_data_lists[[i]]$Peptide_level$num_peptides,by="Organism")
       }
-      names_available <- append(names_available,i)
-    }else
-    {
-      dat_peps <- append(dat_peps,NA)
-      names_available <- append(names_available,i)
     }
+
   }
-  names(dat_peps) <- names_available
+  colnames(dat_peps)[2:ncol(dat_peps)] <- names_available
+  orgs <- dat_peps$Organism
+  dat_peps <- dat_peps[,-1]
+  dat_peps <- as.data.frame(t(dat_peps))
+  rownames(dat_peps) <- names_available
+  colnames(dat_peps) <- orgs
 
   ###missing values
   missing_values_prot <- NULL
@@ -507,7 +582,7 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
   p <- BarplotsSBS(dat_prot,main="Number of identified proteins",ylab="Count",col=colors,AvgLine = F,shownumbers = T,Legendtitle = "Data",Legends = rownames(dat_prot),Legendpos = Legendpos,margins=margins,inset=inset)
 
   ###plot peptide count
-  p <- Barplots(dat_peps,main="Number of identified peptides",ylab="Count",col=colors,AvgLine = F,shownumbers = T,Legendtitle = "Data",Legends = names(dat_peps),Legendpos = Legendpos,Legendscol = colors,Name = names(dat_peps),xlab="",margins=margins,inset=inset)
+  p <- BarplotsSBS(dat_peps,main="Number of identified peptides",ylab="Count",col=colors,AvgLine = F,shownumbers = T,Legendtitle = "Data",Legends = rownames(dat_peps),Legendpos = Legendpos,margins=margins,inset=inset)
 
   ###plot missing value rates
   p <- BarplotsSBS(missing_values,AvgLine = F,Name = colnames(missing_values),main="Missing value rate",ylab="Fraction missing values [%]",col=colors,Legendtitle = "Data",Legends = names(list_of_data_lists),Legendpos = Legendpos,shownumbers = T,margins=margins,inset=inset)
@@ -537,9 +612,22 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
   }
 }
 
-###Plot accuracy of quantification on protein and peptide level
-###list_of_data_lists = named ist of data_lists e.g. list(MaxQ=MaxQ_data,Requant=Requant_data)
-plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),Legendpos = "topleft",margins=c(2,4,4,10),inset=c(-0.435,0),Annotation_column=1,plot_for=c("both","protein","peptide"),allow_missing_values=T,representation_of=c("total","per group"),show_numbers=T,numbers_size=1,round_to_k=T)
+#' Compare coefficients of variation of quantifications between data sets.
+#' @param list_of_data_lists List object containing lists of loaded MaxQuant or IceR data. Requires sample annotation to be added by function add_annotations().
+#' @param colors Colors for data sets to be compared. By default two colors are specified ("darkgrey","chocolate3")
+#' @param Legendpos Location of legend, By default set to "top"
+#' @param margins Margins aroung plot area. By default set to c(12,4,4,9)
+#' @param inset Inset of legend. By default set to c(-0.435,0)
+#' @param Annotation_column Which annotation column should be used to determine between which samples variability should be determined. By default set to 1.
+#' @param plot_for Specify if plots should be generated for protein-level ("protein"), peptide-level ("peptide") or both ("both"). By default set to "both".
+#' @param allow_missing_values Indicate if missing values are allowed during variability estimation. By default set to F.
+#' @param representation_of Indicate how results should be visualized. Select between "total","per group","per intensity". "total" = aggregate CVs into a single boxplot per data set. "per group" = aggregate CVs per annotation group per data set. "per intensity" = plot per data set CVs binned by protein/peptide abundance. By default set to "total".
+#' @param show_numbers Indicate if counts of available CVs per boxplot should be plotted. By default set to T.
+#' @param numbers_size Numeric value specifying plotting size of CV counts. By default set to 1.
+#' @param round_to_k Indicate if CV counts should be rounded to 1000 (K). By default set to T.
+#' @details Compare CVs between data sets.
+#' @return Comparison plots
+plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),Legendpos = "topleft",margins=c(2,4,4,10),inset=c(-0.435,0),Annotation_column=1,plot_for=c("both","protein","peptide"),allow_missing_values=F,representation_of=c("total","per group","per intensity"),show_numbers=T,numbers_size=1,round_to_k=T)
 {
   plot_for <- plot_for[1]
   representation_of <- representation_of[1]
@@ -563,8 +651,8 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
         temp_sds <- rowSds(temp_dat_2,na.rm = allow_missing_values)
         temp_mean <- rowMeans(temp_dat_2,na.rm = allow_missing_values)
         temp_sds <- (temp_sds/temp_mean)*100
-        missing_val <- which(rowSums(is.na(temp_dat_2))>0)
-        temp_sds[missing_val] <- NA
+        #missing_val <- which(rowSums(is.na(temp_dat_2))>0)
+        #temp_sds[missing_val] <- NA
         SDs[which(SDs$Dilution == d),1] <- temp_sds
         SDs[which(SDs$Dilution == d),4] <- rowMedians(temp_dat_2,na.rm=T)
       }
@@ -574,6 +662,16 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
     if(plot_for %in% c("both","peptide"))
     {
       temp_dat <- list_of_data_lists[[n]]$Peptide_level$Quant_data_norm
+      #check if we are looking at Requant data, if yes aggregate quantification per sequence
+      # if(any(names(list_of_data_lists[[n]]$Peptide_level) == "Meta_data_full"))
+      # {
+      #   temp_dat <- temp_dat[which(!grepl("_i",list_of_data_lists[[n]]$Peptide_level$Meta_data$Feature_name)),]
+      #   # quant <- aggregate(2^temp_dat,by=list(Sequence = list_of_data_lists[[n]]$Peptide_level$Meta_data$Sequence),FUN=median,na.rm=T)
+      #   # rownames(quant) <- quant[,1]
+      #   # quant <- quant[,-1]
+      #   # temp_dat <- log2(quant)
+      # }
+
       temp_anno <- list_of_data_lists[[n]]$Annotations[,Annotation_column]
       SDs <- as.data.frame(matrix(ncol=4,nrow=nrow(temp_dat)*length(unique(temp_anno))))
       colnames(SDs) <- c("SD","Dilution","Method","Intensity")
@@ -585,8 +683,8 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
         temp_sds <- rowSds(temp_dat_2,na.rm = allow_missing_values)
         temp_mean <- rowMeans(temp_dat_2,na.rm = allow_missing_values)
         temp_sds <- (temp_sds/temp_mean)*100
-        missing_val <- which(rowSums(is.na(temp_dat_2))>0)
-        temp_sds[missing_val] <- NA
+        #missing_val <- which(rowSums(is.na(temp_dat_2))>0)
+        #temp_sds[missing_val] <- NA
         SDs[which(SDs$Dilution == d),1] <- temp_sds
         SDs[which(SDs$Dilution == d),4] <- rowMedians(temp_dat_2,na.rm=T)
       }
@@ -624,6 +722,9 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
 
   }
 
+  SDs_combined_protein$Method <- as.character(SDs_combined_protein$Method)
+  SDs_combined_peptide$Method <- as.character(SDs_combined_peptide$Method)
+
   if(representation_of == "total")
   {
     unit_count_proteins <- ""
@@ -653,9 +754,9 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
     ###plot
     if(plot_for %in% c("both","protein"))
     {
-      p <- boxplot(SDs_combined_protein$SD~SDs_combined_protein$Method,outline=F,las=2,col=colors,xaxt = "n",xlab="",ylab="CV [%]",main="Protein - Precision of quantification")
+      p <- boxplot(SDs_combined_protein$SD~SDs_combined_protein[,3],outline=F,las=2,col=colors,xaxt = "n",xlab="",ylab="CV [%]",main="Protein - Precision of quantification")
       par(xpd=T)
-      legend(Legendpos,inset=inset, legend = names(list_of_data_lists), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
+      legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_protein[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
       par(xpd=F)
       range_y <- par("usr")[4]-par("usr")[3]
       if(show_numbers == T)
@@ -663,7 +764,7 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
         for(n in 1:length(names(SDs_protein_list)))
         {
           y <- p$stats[3,n]+(range_y*0.05)
-          text(n,y,paste(round(count_protein$freq[which(count_protein$x==paste("Protein_",names(SDs_protein_list)[n],sep=""))],digits = 0),unit_count_proteins,sep=""),cex=numbers_size)
+          text(n,y,paste(round(count_protein$freq[which(count_protein$x==sort(unique(SDs_combined_protein[,3]))[n])],digits = 0),unit_count_proteins,sep=""),cex=numbers_size)
         }
       }
 
@@ -673,7 +774,7 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
     {
       p <- boxplot(SDs_combined_peptide$SD~SDs_combined_peptide$Method,outline=F,las=2,col=colors,xaxt = "n",xlab="",ylab="CV [%]",main="Peptide - Precision of quantification")
       par(xpd=T)
-      legend(Legendpos,inset=inset, legend = names(list_of_data_lists), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
+      legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_peptide[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
       par(xpd=F)
       range_y <- par("usr")[4]-par("usr")[3]
       if(show_numbers == T)
@@ -681,7 +782,7 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
         for(n in 1:length(names(SDs_peptide_list)))
         {
           y <- p$stats[3,n]+(range_y*0.05)
-          text(n,y,paste(round(count_peptide$freq[which(count_peptide$x==paste("Peptide_",names(SDs_peptide_list)[n],sep=""))],digits = 0),unit_count_peptides,sep=""),cex=numbers_size)
+          text(n,y,paste(round(count_peptide$freq[which(count_peptide$x==sort(unique(SDs_combined_peptide[,3]))[n])],digits = 0),unit_count_peptides,sep=""),cex=numbers_size)
         }
       }
     }
@@ -726,13 +827,16 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
     {
       p <- boxplot(SDs_combined_protein$SD~SDs_combined_protein$Method+SDs_combined_protein[,2],outline=F,las=2,col=colors,xlab="",names=names,ylab="CV [%]",main="Protein - Precision of quantification")
       par(xpd=T)
-      legend(Legendpos,inset=inset, legend = names(list_of_data_lists), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
+      legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_protein[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
       par(xpd=F)
       range_y <- par("usr")[4]-par("usr")[3]
-      for(n in 1:nrow(count_protein))
+      if(show_numbers == T)
       {
-        y <- p$stats[3,n]+(range_y*0.02)
-        text(n,y,paste(round(count_protein$freq[n],digits = 0),unit_count_proteins,sep=""),cex=numbers_size/2)
+        for(n in 1:nrow(count_protein))
+        {
+          y <- p$stats[3,n]+(range_y*0.02)
+          text(n,y,paste(round(count_protein$freq[n],digits = 0),unit_count_proteins,sep=""),cex=numbers_size/2)
+        }
       }
     }
 
@@ -740,19 +844,78 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
     {
       p <- boxplot(SDs_combined_peptide$SD~SDs_combined_peptide$Method+SDs_combined_peptide[,2],outline=F,las=2,col=colors,names=names,xlab="",ylab="CV [%]",main="Peptide - Precision of quantification")
       par(xpd=T)
-      legend(Legendpos,inset=inset, legend = names(list_of_data_lists), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
+      legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_peptide[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
       par(xpd=F)
       range_y <- par("usr")[4]-par("usr")[3]
-      for(n in 1:nrow(count_peptide))
+      if(show_numbers == T)
       {
-        y <- p$stats[3,n]+(range_y*0.02)
-        text(n,y,paste(round(count_peptide$freq[n],digits = 0),unit_count_peptides,sep=""),cex=numbers_size/2)
+        for(n in 1:nrow(count_peptide))
+        {
+          y <- p$stats[3,n]+(range_y*0.02)
+          text(n,y,paste(round(count_peptide$freq[n],digits = 0),unit_count_peptides,sep=""),cex=numbers_size/2)
+        }
       }
     }
     par <- par_save
 
   }
 
+  if(representation_of == "per intensity")
+  {
+    if(plot_for %in% c("both","protein"))
+    {
+      ylim <- c(0,max(SDs_combined_protein$SD,na.rm=T))
+      for(m in sort(unique(SDs_combined_protein$Method)))
+      {
+        ind <- which(sort(unique(SDs_combined_protein$Method)) == m)
+
+        sel <- which(SDs_combined_protein$Method == m & !is.na(SDs_combined_protein$SD))
+
+        groups <- cut(log2(SDs_combined_protein$Intensity[sel]),breaks = 10)
+
+        counts <- plyr::count(groups)
+        counts <- counts[which(!is.na(counts[,1])),]
+
+        boxplot(SDs_combined_protein$SD[sel]~groups,las=2,xlab="",ylab="CV [%]",outline=F,col=colors[ind],main=m,ylim=ylim)
+
+        ymax <- par("usr")[4]
+        for(c in 1:10)
+        {
+          text(c,ymax,counts[c,2],pos=1,cex=0.5)
+        }
+        text(10.5,ymax,sum(counts[,2]),pos=1,cex=0.5,font=2)
+      }
+    }
+
+
+    if(plot_for %in% c("both","peptide"))
+    {
+      ylim <- c(0,max(SDs_combined_peptide$SD,na.rm=T))
+      for(m in sort(unique(SDs_combined_peptide$Method)))
+      {
+        ind <- which(sort(unique(SDs_combined_peptide$Method)) == m)
+
+        sel <- which(SDs_combined_peptide$Method == m & !is.na(SDs_combined_peptide$SD))
+
+        groups <- cut(log2(SDs_combined_peptide$Intensity[sel]),breaks = 10)
+
+        counts <- plyr::count(groups)
+        counts <- counts[which(!is.na(counts[,1])),]
+
+        boxplot(SDs_combined_peptide$SD[sel]~groups,las=2,xlab="",ylab="CV [%]",outline=F,col=colors[ind],main=m,ylim=ylim)
+
+        ymax <- par("usr")[4]
+        for(c in 1:10)
+        {
+          text(c,ymax,counts[c,2],pos=1,cex=0.5)
+        }
+        text(10.5,ymax,sum(counts[,2]),pos=1,cex=0.5,font=2)
+      }
+    }
+
+
+
+  }
 
 
   #n <- length(names(list_of_data_lists))
@@ -832,14 +995,17 @@ visualize_dataset_heatmap <- function(data_list,annotation=NULL,colors_annotatio
       names(colors_annotation) <- colnames(temp_dat)
     }else
     {
-      colors_annotation <- list()
+      colors_annotation <- hcl.colors(length(unique(annotation[,1])), alpha = 1, rev = FALSE)
+      names(colors_annotation) <- unique(annotation[,1])
 
-      for(c in 1:ncol(annotation))
-      {
-        colors_annotation[[c]] <- hcl.colors(length(unique(annotation[,c])), alpha = 1, rev = FALSE)
-        names(colors_annotation[[c]]) <- unique(annotation[,c])
-      }
-      names(colors_annotation) <- colnames(annotation)
+      # colors_annotation <- list()
+      #
+      # for(c in 1:ncol(annotation))
+      # {
+      #   colors_annotation[[c]] <- hcl.colors(length(unique(annotation[,c])), alpha = 1, rev = FALSE)
+      #   names(colors_annotation[[c]]) <- unique(annotation[,c])
+      # }
+      # names(colors_annotation) <- colnames(annotation)
     }
   }
   if(!is.list(colors_annotation))
@@ -904,38 +1070,55 @@ visualize_dataset_heatmap <- function(data_list,annotation=NULL,colors_annotatio
   }
 
   ##plot
-  Heatmap(data = temp_dat,annotation = annotation,colors_annotation = colors_annotation,hclust_col = hclust_col,hclust_row = hclust_row,show_rownames = show_rownames,colors_plot = colors_plot,color_breaks = breaks,main=main,annotation_name = annotation_name,row_labels=rownames)
+  Heatmap(data = temp_dat,annotation_col = annotation,colors_annotation_col = colors_annotation,hclust_col = hclust_col,hclust_row = hclust_row,show_rownames = show_rownames,colors_plot = colors_plot,color_breaks = breaks,main=main,annotation_name_col = annotation_name,row_labels=rownames)
 
 }
 
-###Normalize data based on median or density maxima
-###data=data frame with features in rows and samples in cols
-###method=how the data should be normalized. either "density" --> use density maxium or "median" --> use median for normalization
-###norm_to: can be set if values should be normalized to a specific value
-###norm_on_subset: numeric vector indicating which rows should be only used for normlization
-normalize_data <- function(data,method="density",norm_to=NULL,norm_on_subset=NULL,main="Data")
+#' Normalize quantification data
+#' @param data Table of quantifications with samples in columns and features in rows.
+#' @param method Method how data should be normalized. Select between "median","density","vsn". By default set to "median".
+#' @param norm_on_subset Optional: numeric vector of rows on which normalization factors should be determined (e.g. expected constant background)
+#' @param norm_to Optional: specify to which intensity all samples should be normalized. By default set to NULL indicating that samples are normalized to the average of samples.
+#' @param main Titel of plots
+#' @details Normalize quantification data
+#' @return Table with normalized quantifications and density plots.
+normalize_data <- function(data,method=c("median","density","vsn"),norm_to=NULL,norm_on_subset=NULL,main="Data")
 {
+  method <- method[1]
   if(is.null(norm_on_subset))norm_on_subset <- 1:nrow(data)
   densityplots(data[norm_on_subset,],main=paste(main,"- Raw"),xlab="Intensity, log2",col = "black")
-  maxima <- NULL
-  if(method == "density")
+
+  if(method %in% c("density","median"))
   {
+    maxima <- NULL
+    if(method == "density")
+    {
+      for(c in 1:ncol(data))
+      {
+        maxima <- append(maxima,maxDensity(data[norm_on_subset,c]))
+      }
+    }
+    if(method == "median")
+    {
+      maxima <- colMedians(as.matrix(data[norm_on_subset,]),na.rm=T)
+    }
+
+    if(is.null(norm_to))norm_to <- mean(maxima,na.rm=T)
+    norm_factors <- norm_to/maxima
+    data_norm <- data
     for(c in 1:ncol(data))
     {
-      maxima <- append(maxima,maxDensity(data[norm_on_subset,c]))
+      data_norm[,c] <- data_norm[,c]*norm_factors[c]
     }
+
   }
-  if(method == "median")
+
+  if(method == "vsn")
   {
-    maxima <- colMedians(as.matrix(data[norm_on_subset,]),na.rm=T)
+    library("vsn")
+    data_norm <- as.data.frame(justvsn(as.matrix(2^data)))
   }
-  if(is.null(norm_to))norm_to <- mean(maxima,na.rm=T)
-  norm_factors <- norm_to/maxima
-  data_norm <- data
-  for(c in 1:ncol(data))
-  {
-    data_norm[,c] <- data_norm[,c]*norm_factors[c]
-  }
+
   densityplots(data_norm,main=paste(main,"- Normalized"),xlab="Intensity, log2",col = "black")
   return(data_norm)
 }
@@ -1373,19 +1556,23 @@ Heatmap <- function(data,annotation,annotation_name="Anno",main="Heatmap",colors
 
 }
 
-####Perform DE analysis using probe-level expression change averaging, e.g. performing DE on protein level by integrating peptide level data
-####peptide_data = samples in cols, observations in rows, intensities in log2
-####peptide_data_quant_significance = Data.frame with ncol and nrow equal to peptide_data representing significance for every quantification
-####ids = e.g. protein names to which respective feature corresponds to, aggregation per protein
-####anno = annotation of grouping per sample, 2 groups
-####goup1_name = name of group1 in anno
-####group2_name = name of group2 in anno
-####TopN_ratio = indicates based on how many top-abundant peptides the actual ratio between both groups should be calculated. If NA, ratio is calculated based on all peptides
-####pvalue_cutoff = indicates which quantification values should be used for DE. If NA, all quantifications are used
-PECA_analysis <- function(peptide_data,peptide_data_quant_significance,ids,anno=NULL,group1_name,group2_name,TopN_ratio=5,pvalue_cutoff=NA)
+#' Perform differential expression analysis using peptide-level expression-change averaging
+#' @param peptide_data Table of peptide quantifications with samples in columns and features in rows.
+#' @param peptide_data_quant_significance Optional: Ion accumulation significances with samples in columns and features in rows., By default not required and set to NULL.
+#' @param ids character vector of same length as rows in peptide_data indicating to which protein ID the corresponding peptide belongs to.
+#' @param annotation Annotation of grouping per sample
+#' @param group1_name Name of group1 in annotation
+#' @param group2_name Name of group1 in annotation
+#' @param TopN_ratio Number of top abundant peptides on which at maximum protein ratios should be estimated. By default set to 5.
+#' @param pvalue_cutoff Optional: Ion accumulation significance cutoff.
+#' @param test A character string indicating whether the ordinary t-test ("t"), modified t-test ("modt"), or reproducibility-optimized test statistic ("rots") is performed.
+#' @details Perform differential expression analysis using the function PECA_df() from the R-package PECA.
+#' @return Returns a matrix which rows correspond to the genes under analysis and columns indicate the corresponding abundance ratio, t-statistic, p-value and FDR adjusted p-value
+PECA_analysis <- function(peptide_data,peptide_data_quant_significance=NULL,ids,anno=NULL,group1_name,group2_name,TopN_ratio=5,pvalue_cutoff=NA,test=c("t","modt","rots"))
 {
   library(PECA)
   library(matrixStats)
+  test <- test[1]
   colnames(peptide_data) <- gsub("^X","",colnames(peptide_data))
   #get names of samples in groups to be compared
   group_1 <- colnames(peptide_data)[which(anno == group1_name)]
@@ -1401,7 +1588,7 @@ PECA_analysis <- function(peptide_data,peptide_data_quant_significance,ids,anno=
   peptide_data <- data.frame(id=ids,2^peptide_data)
   colnames(peptide_data) <- gsub("^X","",colnames(peptide_data))
 
-  DE_results <- PECA_df(df = peptide_data,id=id,samplenames1 = group_1,samplenames2 = group_2,test = "t",progress = F)
+  DE_results <- PECA_df(df = peptide_data,id=id,samplenames1 = group_1,samplenames2 = group_2,test = test,progress = F)
   colnames(DE_results)[c(1,5,6)] <- c("logFC","P.Value","adj.P.Val")
 
   #calculate ratio based on TopN abundant peptides per protein

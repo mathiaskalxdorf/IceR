@@ -1,11 +1,20 @@
-###Function to determine at which x-value the density maximum is reached
+#' Function to determine at which value a density maximum is reached
+#' @param data Numeric vector
+#' @details Uses kernel density estimation function from R-package stats removing missing values
+#' @return Numeric indicating at which value a density maximum is reached
+#' @examples
+#' data <- c(1,1,1,2,2,4,4,5,10)
+#' maxDensity(data)
 maxDensity <- function(data)
 {
-  dens <- density(data,na.rm=T)
+  dens <- stats::density(data,na.rm=T)
   return(dens$x[which(dens$y == max(dens$y))])
 }
 
-###Convert thermo raw files to mzXML with centroided ms1 scans
+#' Convert thermo raw files to mzXML with centroided ms1 scans using the ProteoWizard tool msConvert
+#' @param path_to_raw Path to folder containing raw files which should be converted
+#' @details Requires installation of ProteoWizard (http://proteowizard.sourceforge.net/download.html). Pay attention to installation requirements.
+#' @return Resulting mzXML files are stored in a sub-directory within specified raw file folder
 run_msconvert_raw_mzXML <- function(path_to_raw=NULL)
 {
   library(ff)
@@ -91,7 +100,11 @@ run_msconvert_raw_mzXML <- function(path_to_raw=NULL)
 
 }
 
-###Convert mzXML in RData files which are faster to open and to handle
+#' Prepare mzXML files for IceR workflow
+#' @param path_to_mzXML Path to folder containing mzXML files
+#' @param n_cores Numbers of CPU cores which should be used to perform conversion
+#' @details Converts MS1 spectra in mzXML files into tables containing m/z, RT and intensity information per ion
+#' @return Resulting ion tables are stored in a sub-directory (all_ion_lists) of the mzXML folder as .RData files
 mzxml_to_list <- function(path_to_mzXML,n_cores=2)
 {
   library(doParallel)
@@ -173,18 +186,24 @@ mzxml_to_list <- function(path_to_mzXML,n_cores=2)
 
 }
 
-###align features using defined parameters based on MaxQ allPeptides.txt in path, align_unknown indicates if only peptide features are aligned or also unknown features
-###output_file_names_add can be used to add a specific name tag to all outputs
-###mz_window can be used to define which maximal deviation around a center peak should be used, normally set to NA which indicates that the function determines automatically this parameter based on sd of m/z between runs of known peptides identified in respective samples
-###min_mz_window defines a minimal mz window
-###RT_window can be used to define which maximal deviation around a center peak should be used, normally set to NA which indicates that the function determines automatically this parameter based on sd of m/z between runs of known peptides identified in respective samples
-###min_RT_window defines a minimal RT window
-###min_num_ions_collapse indicates how often a feature (specific m/z and RT window) has to be at least found in total in all samples
-###if only few samples are matched, this number should not be too large as a feature (specific peptide at specific charge state and modification) can be potentially detected only once per sample
-###this parameter is usually set to 10
-####feature_mass_deviation_collapse indicates which Da deviation should be used to finally collapse alligned features with very similar mass (sometimes sligtly more different than m/z, still use RT_window)
-####only_unmodified_peptides = if only unmodified peptide sequences are used for alignment
-align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,output_file_names_add="",mz_window=NA,min_mz_window = 0.001,RT_window=NA,min_RT_window=1,min_num_ions_collapse=10,feature_mass_deviation_collapse=0.002,only_unmodified_peptides=F,sample_list=NULL,use_mz_at_max_int_for_correction=F,remove_contaminants=T)
+
+#' Perform alignment of pre-determined MS1-features by MaxQuant over proteomics samples
+#' @param path_to_MaxQ_output Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)
+#' @param path_to_output Path to folder where IceR results should be stored
+#' @param output_file_names_add IceR result name tag. By default IceR_analysis
+#' @param mz_window Numeric value indicating maximal m/z deviation around a center. By default set to NA which indicates that the function determines automatically this parameter based on sd of m/z of identified peptides between samples.
+#' @param min_mz_window Numberic value indicating how large the automatically determined m/z-window should be. By default set to 0.001 Da. Only required if m/z alignment window should be automatically determined. If set to NA, no minimal window size will be required.
+#' @param RT_window Numeric value indicating maximal RT deviation around a center. By default set to NA which indicates that the function determines automatically this parameter based on sd of RT of identified peptides between samples.
+#' @param min_RT_window Numberic value indicating how large the automatically determined RT-window should be. By default set to 1 min. Only required if RT alignment window should be automatically determined. If set to NA, no minimal window size will be required.
+#' @param feature_mass_deviation_collapse Numeric value indicating which minimal mass deviation is required to distinguish IceR features. By default set to 0.002 Da. IceR features with overlapping RT-windows and mass differences smaller than the specified value are merged.
+#' @param only_unmodified_peptides Boolean value indicating if only unmodified peptide sequences are used for alignment. By default set to F.
+#' @param remove_contaminants Boolean value indicating if peptide features labeled as contaminants should be removed. By default set to T.
+#' @param sample_list Character vector (raw file names) listing which samples should be aligned. By default all samples occuring in MaxQuant outputs are aligned.
+#' @param align_unknown Boolean value indicating if only peptide features or also unsequenced features should be aligend over samples. By default set to F.
+#' @param min_num_ions_collapse Numeric value indicating how many unsequenced MaxQuant features have to be at least detected over all samples to result in an IceR feature. Only required if align_unknown is set to T. By default set to 10.
+#' @details Performs the first steps of the IceR workflow: 1) Alignment window determination if not specified. 2) Alignment of MaxQuant features into IceR features. 3) Transfer of sequence information between MaxQuant features aligned into IceR features. 4) Extraction, modelling and prediction of RT- and m/z-correction factor per IceR feature and sample.
+#' @return Outputs are stored in the sub-directory Temporary_files within specified output folder. MaxQuant allpeptides.txt and evidence.txt are converted to RData files. QC plots of estimated alignment windows as well as of random forest modesl and generalized additive models are stored in a QC_plots.pdf. Relevant QC data is stored in Feature_alignment_QC_data.RData. Aligned IceR features are stored in Features_aligned_merged.txt
+align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,output_file_names_add="IceR_analysis",mz_window=NA,min_mz_window = 0.001,RT_window=NA,min_RT_window=1,min_num_ions_collapse=10,feature_mass_deviation_collapse=0.002,only_unmodified_peptides=F,sample_list=NULL,remove_contaminants=T)
 {
   options(warn=-1)
   library(data.table)
@@ -192,6 +211,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
   library(lubridate)
   library(mgcv)
   library(ff)
+  use_mz_at_max_int_for_correction=F
 
   if(output_file_names_add != "")output_file_names_add <- paste("_",output_file_names_add,sep="")
 
@@ -429,10 +449,6 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
     QC_data[["MaxQ_calibrations"]] <- evidence[,c("Retention.time.calibration","Uncalibrated...Calibrated.m.z..Da.","delta_mz_to_mz_at_max_int")]
 
-    ###True mz deviation observed mz
-    boxplot(allpeptides$delta_mz_to_mz_at_max_int,outline=F,main="Deviation between true m/z and observed m/z",ylab="m/z - m/z at max Intensity")
-    abline(h=0)
-
     allpeptides <- allpeptides[order(allpeptides$m.z),]
     rownames(allpeptides) <- c(1:nrow(allpeptides))
 
@@ -546,17 +562,8 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
     windows <- windows[1:count_features,]
 
-    boxplot(windows$num_ions,main="Number of ions with same sequence and charge",outline=F)
-    boxplot(windows$sd_m.z_uncalibrated,main="Standard deviation of peptide features of m/z uncalibrated",outline=F)
-    boxplot(windows$sd_m.z,main="Standard deviation of peptide features of m/z",outline=F)
-    boxplot(windows$sd_RT,main="Standard deviation of peptide features before RT calibration",outline=F)
-    boxplot(windows$sd_RT_calibrated,main="Standard deviation of peptide features after RT calibration",outline=F)
-
-
-    #xlims <- boxplot.stats(evidence$Uncalibrated...Calibrated.m.z..Da.)$stats[c(1,5)]
-    #ylims <- boxplot.stats(evidence$delta_mz_to_mz_at_max_int)$stats[c(1,5)]
-    #smoothScatter(evidence$Uncalibrated...Calibrated.m.z..Da.,evidence$delta_mz_to_mz_at_max_int,xlim=xlims,ylim=ylims,main="MaxQ mz calibration vs observed mz deviation",xlab="MaxQ mz calibration (uncalibrated - calibrated)",ylab="True vs observed mz (true - observed)")
-    #abline(a=0,b=1)
+    boxplot(windows$sd_m.z,main="Standard deviation of peptide features m/z",outline=F)
+    boxplot(windows$sd_RT,main="Standard deviation of peptide features RT",outline=F)
 
     if(is.na(mz_window))
     {
@@ -952,7 +959,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     close(pb)
 
     features <- features[1:count_features,]
-    write.table(features,paste("Temporary_files\\Features_aligned_peptides",output_file_names_add,".txt",sep=""),row.names = F)
+    #write.table(features,paste("Temporary_files\\Features_aligned_peptides",output_file_names_add,".txt",sep=""),row.names = F)
 
     borders_RT <- borders_RT_use_save
 
@@ -1187,7 +1194,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
       features_unknown <- features_unknown[1:count_features_unknown,]
 
-      write.table(features_unknown,paste("Temporary_files\\Features_aligned_unknown",output_file_names_add,".txt",sep=""),row.names = F)
+      #write.table(features_unknown,paste("Temporary_files\\Features_aligned_unknown",output_file_names_add,".txt",sep=""),row.names = F)
 
       ####Combine known and unknown features
       features <- rbind(features,features_unknown)
@@ -1204,7 +1211,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       save(temp_data_m,features,count_features_unknown,file=paste("features_aligned_step_2",output_file_names_add,".RData",sep=""))
     }
 
-    write.table(features,paste("Temporary_files\\Features_aligned",output_file_names_add,".txt",sep=""),row.names = F)
+    #write.table(features,paste("Temporary_files\\Features_aligned",output_file_names_add,".txt",sep=""),row.names = F)
 
     ####Merge features which were currently regarded as separated although same RT and m/z
     #features <- read.table("Features_alligned.txt",header = T)
@@ -1708,8 +1715,13 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
 }
 
-###based on observed peptide features with good score (> 25% quantile of mean ID scores) respective isotope features are added
-add_isotope_features <- function(path_to_features,feature_table_file_name="Features_aligned_merged.txt",min_observations=0)
+#' Extend IceR features by expected +1-isotopic features
+#' @param path_to_features Path to folder where results of align_features() are stored.
+#' @param feature_table_file_name File name which contains align_features() results. By default is set to Features_aligned_merged_IceR_analysis.txt.
+#' @param min_observations Specifying how many MaxQuant features had to be previously detected for monoisotopic IceR features to be extended by +1-isotopic features. By default set to 0 indicating that all for all monoisotopic IceR features a +1-isotopic feature is added.
+#' @details Optional step of the IceR workflow appending the list of IceR features by respective expected +1-isotopic features. Isotopic features are expected to show an m/z shift by +1.002 Da/z relative to the monoisotopic IceR feature. Only IceR features with at least min_observations and with mean Andromeda score > 25 % quantile of all mean Andromeda scores are considered.
+#' @return Extended list ist stored in the specified feature_table_file_name.
+add_isotope_features <- function(path_to_features,feature_table_file_name="Features_aligned_merged_IceR_analysis.txt",min_observations=0)
 {
   setwd(paste(path_to_features,"\\Temporary_files",sep=""))
   features <- read.table(feature_table_file_name,header = T)
@@ -1744,16 +1756,26 @@ add_isotope_features <- function(path_to_features,feature_table_file_name="Featu
   }
 }
 
-###based on observed proteins, add features which are corresponding to totally missed peptides. For that purpose we perform tryptic in-silico digestion
-###and select peptides with a length between 7 and 25 AAs. At maximum we take 10 additional peptides per protein.
-###Next, we look through MaxQ features and keep potentially missed peptides (PMPs) which match to MaxQ features mass and corresponding MaxQ features have to be detected at least in 5 samples.
-add_missed_peptides <- function(path_to_features,feature_table_file_name="Features_aligned_merged.txt",path_to_fasta,min_AA_length=7,max_AA_length=25,max_add_per_protein=10,min_observations=5,RT_calibration=T,mz_calibration=T)
+
+#' Extend IceR features by expected monoisotopic features which correspond to totally missed tryptic peptides of identified proteins.
+#' @param path_to_features Path to folder where results of align_features() are stored.
+#' @param feature_table_file_name File name which contains align_features() results. By default is set to Features_aligned_merged_IceR_analysis.txt.
+#' @param path_to_fasta Path to fasta file used during MaxQuant data preprocessing.
+#' @param min_AA_length Minimal length of a theoretical peptide which is considered to be added. By default set to 7.
+#' @param max_AA_length Maximal length of a theoretical peptide which is considered to be added. By default set to 25.
+#' @param max_add_per_protein Maximal number of potentially missed peptide features which should be added. By default set to 10.
+#' @param min_observations Minimal number of MaxQuant features which have to fall into the expected RT- and m/z-windows of potentially missed peptide features.
+#' @details Optional step of the IceR workflow appending the list of IceR features by potentially missed tryptic peptide IceR features. Requires installation of the Bioconductor package "cleaver". Expected m/z windows are determined based on masses of respective tryptic peptides. Expected RT windows are estimated based on random forest modelling with KyteDoolittle hydrophobicity, peptide length, peptide charges and amino acid composition as predictors and observed RTs as response factors. Potentially missed peptide (PMP) features are expected to show +2 or +3 charge.
+#' @return Extended list ist stored in the specified feature_table_file_name.
+add_missed_peptides <- function(path_to_features,feature_table_file_name="Features_aligned_merged.txt",path_to_fasta,min_AA_length=7,max_AA_length=25,max_add_per_protein=10,min_observations=5)
 {
   options(warn = -1)
   library(Peptides)
   library(randomForest)
   library(seqinr)
   library(cleaver)
+  RT_calibration=T
+  mz_calibration=T
 
   pdf("Temporary_files\\Potentially_missed_peptides_QC_plots.pdf")
 
@@ -2355,12 +2377,58 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
   crap <- gc(F)
 }
 
-###Perform DICE for every feature including decoy features
-###Finally export feature and protein quantifications
-requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_output,feature_table_file_name="Features_aligned_merged.txt",output_file_names_add="",multiply_intensity_count=F,RT_calibration=T,mz_calibration=T,peak_detection=T,abundance_estimation_correction = T,Quant_pVal_cut=0.05,n_cores=2,kde_resolution = 50,num_peaks_store = 5,plot_2D_peak_detection=F,alignment_variability_score_cutoff=0.05,alignment_scores_cutoff=0.05,mono_iso_alignment_cutoff=0.05,calc_peptide_LFQ=F,calc_protein_LFQ=T)
+#' Perform quantification of IceR features
+#' @param path_to_features Path to folder where results of align_features() are stored
+#' @param path_to_mzXML Path to folder containing mzXML files of samples
+#' @param path_to_MaxQ_output Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)
+#' @param path_to_output Path to folder where IceR results should be stored
+#' @param feature_table_file_name File name which contains align_features() results. By default is set to Features_aligned_merged_IceR_analysis.txt.
+#' @param output_file_names_add IceR result name tag. By default IceR_analysis
+#' @param RT_calibration Boolean value indicating if corrected RT should be used during peak detection, selection and DICE, By default set to T.
+#' @param mz_calibration Boolean value indicating if corrected m/z should be used during peak detection, selection and DICE, By default set to T.
+#' @param abundance_estimation_correction Boolean value indicating if resulting peptide abundances should be corrected using MaxQuant results as a reference. By default set to T.
+#' @param Quant_pVal_cut Numeric value used as diagnostic cutoff border for visualization of significances of ion accumulation per IceR feature quantification. Furthermore, used as cutoff to filter +1-isotopic IceR features with significant accumulation of ions. By default set to 0.05.
+#' @param n_cores Numeric value specifying on how many CPU cores tasks should be parallelized. By default set to 2.
+#' @param kde_resolution Numeric value specifying number of grid points per dimension. By default set to 50.
+#' @param num_peaks_store Numeric value specifying number of 2D peaks to be stored during peak detection. By default set to 5.
+#' @param plot_2D_peak_detection Boolean value indicating if for every feature quantification the determined kernel density estimations and detected peaks should be visualized and stored. By default set to F.
+#' @param alignment_variability_score_cutoff Numeric value specifying significance cutoff to distinguish which features show high RT- or m/z-variability of selected peaks between samples. By default set to 0.05. All features showing significant general variability (variability score < alignment_variability_score_cutoff) are excluded.
+#' @param alignment_scores_cutoff Numeric value specifying significance cutoff to distinguish which samples show high RT- or m/z-variability of selected peaks for respective IceR feature. By default set to 0.05. All samples showing significant peak variability for respective IceR feature (variability score < alignment_scores_cutoff) are excluded (quantification set to NA).
+#' @param mono_iso_alignment_cutoff Numeric value specifying significance cutoff to distinguish which samples show high RT- or m/z-variability of selected peaks for +1-isotopic from corresponding monoisotopic IceR feature. By default set to 0.05. All samples showing significant peak variability between selected +1-isotopic and monoisotopic IceR features (variability score < mono_iso_alignment_cutoff) are excluded (quantification of +1-isotopic feature set to NA).
+#' @param calc_peptide_LFQ Boolean value specifying if multiply peptide quantification data for same peptide sequence (multiply charge states, isotope-states) should be aggregated using the MaxLFQ algorithm. By default set to F.
+#' @param calc_protein_LFQ Boolean value specifying if protein quantification should be additionally performed by peptide quantification aggregation using the MaxLFQ algorithm. By default set to T.
+#' @details Performs final steps of the IceR workflow:
+#' 1) Estimation of background noise per IceR feature quantification.
+#' 2) 2D Kernel density estimation-based peak detection, selection and DICE-based quantification of IceR features.
+#' 3) Determination of significances of ion accumulations per IceR feature quantification.
+#' 4) Quality control of peak selections.
+#' 5) IceR peak selection accuracy estimations per sample.
+#' 6) Optional: Imputation of missing IceR feature quantifications using estimated backgroudn noise models per sample.
+#' 7) Protein quantification by aggregating available peptide quantifications.
+#' @return Outputs are stored in the specified output folder and intermediate results are stored in the sub-directory Temporary_files.
+#' Quantification results are stored in tab-delimited text files (.tab):
+#' Feature information - Features_DDAiceR_Analysis.tab
+#' Peak alignment scores - Features_quantification_alignment_score_DDAiceR_Analysis.tab
+#' Feature quantifications - Features_quantification_DDAiceR_Analysis.tab
+#' Feature quantifications after imputation - Features_quantification_imputed_DDAiceR_Analysis.tab
+#' Numbers of observed ions per feature quantification - Features_quantification_ioncount_DDAiceR_Analysis.tab
+#' Alignment scores between monoisotopic and corresponding +1isotopic IceR features - Features_quantification_mono_iso_alignment_score_DDAiceR_Analysis.tab
+#' Significance of ion accumulations per feature quantification - Features_quantification_pvals_DDAiceR_Analysis.tab
+#' Signal to background intensity ratios per feature quantification - Features_quantification_S2B_DDAiceR_Analysis.tab
+#' General variability score of peak selections - Features_quantification_variability_score_DDAiceR_Analysis.tab
+#' Protein quantification - Proteins_quantification_LFQ_DDAiceR_Analysis.tab
+#' Protein quantification after imputation - Proteins_quantification_LFQ_imputed_DDAiceR_Analysis.tab
+#' QC results of background noise estimations are visualized in "Decoy feature quantification parameters.pdf".
+#' QC results of peak selections are visualized in "Alignment and quantification scores.pdf".
+#' The performance of RT- and m/z-alignments over samples is visualized in "Performance of feature alignment.pdf"
+#' Estimation of required peptide abundance correction factors is visualized in "Correct feature abundance estimations Signal_Background_intensity.pdf".
+#' Intermediate results of the function are stored in RData files.
+requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_output,feature_table_file_name="Features_aligned_merged_IceR_analysis.txt.",output_file_names_add="IceR_analysis",RT_calibration=T,mz_calibration=T,abundance_estimation_correction = T,Quant_pVal_cut=0.05,n_cores=2,kde_resolution = 50,num_peaks_store = 5,plot_2D_peak_detection=F,alignment_variability_score_cutoff=0.05,alignment_scores_cutoff=0.05,mono_iso_alignment_cutoff=0.05,calc_peptide_LFQ=F,calc_protein_LFQ=T)
 {
   options(warn=-1)
   library(mgcv)
+  multiply_intensity_count=F
+  peak_detection=T
 
   QC_data <- list() ##here relevant qc data is stored and finally saved as RData which can be used for re-generating plots
 
