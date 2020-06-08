@@ -19,21 +19,24 @@ run_panel <- fluidPage(
 
     column(3,
            h3("Raw files"),
-           shinyDirButton("Raw_folder", "Chose directory", "Select folder containing Raw files"),
+           #shinyDirButton("Raw_folder", "Choose directory", "Select folder containing Raw files"),
+           actionButton("Raw_folder", "Choose directory",width = 170),
            verbatimTextOutput("Raw_folder", placeholder = TRUE),
            helpText("Select the folder containing MS raw files")
     ),
 
     column(3,
            h3("MaxQ folder"),
-           shinyDirButton("MaxQ_output_folder", "Chose directory", "Select MaxQ output folder"),
+           actionButton("MaxQ_output_folder", "Choose directory",width = 170),
+           #shinyDirButton("MaxQ_output_folder", "Choose directory", "Select MaxQ output folder"),
            verbatimTextOutput("MaxQ_output_folder", placeholder = TRUE),
            helpText("Select the folder containing MaxQuant output files e.g. the txt output folder")
     ),
 
     column(3,
            h3("Results folder"),
-           shinyDirButton("DDAiceR_output", "Chose directory", "Select folder where results should be stored"),
+           actionButton("DDAiceR_output", "Choose directory",width = 170),
+           #shinyDirButton("DDAiceR_output", "Choose directory", "Select folder where results should be stored"),
            verbatimTextOutput("DDAiceR_output", placeholder = TRUE),
            helpText("Select the folder where the DDAiceR results should be saved")
     )
@@ -44,7 +47,7 @@ run_panel <- fluidPage(
 
     column(3,
            textInput("Analysis_name", h3("Analysis name"),
-                     value = "Requant_analysis"),
+                     value = "DDAiceR_analysis"),
            helpText("Specify how the analysis results should be named.")
     ),
 
@@ -104,7 +107,7 @@ run_panel <- fluidPage(
                                              "Plot 2D peak detection" = 7,
                                              "MaxLFQ quantification" = 8
                               ),
-                              selected = c(1,2,3,4,5,7,8))
+                              selected = c(1,2,3,4,5,8))
     ),
     column(3,
            br(),br(),br(),
@@ -390,13 +393,13 @@ server <- function(input, output,session){
 
   volumes <- getVolumes()
 
-  ###choose MaxQ output folder
-  shinyDirChoose(
-    input,
-    'MaxQ_output_folder',
-    roots = getVolumes(),
-    #filetypes = c('', 'txt', 'bigWig', "tsv", "csv", "bw")
-  )
+  ##choose MaxQ output folder
+  # shinyDirChoose(
+  #   input,
+  #   'MaxQ_output_folder',
+  #   roots = getVolumes(),
+  #   #filetypes = c('', 'txt', 'bigWig', "tsv", "csv", "bw")
+  # )
 
   MaxQ_output_folder <- reactive({
     return(parseDirPath(volumes, input$MaxQ_output_folder))
@@ -407,22 +410,31 @@ server <- function(input, output,session){
     global_MaxQ_output_folder$datapath
   })
 
-  observe({
-    if(!is.null(MaxQ_output_folder)){
-      handlerExpr = {
-        req(nchar(MaxQ_output_folder())>0)
-        global_MaxQ_output_folder$datapath <- paste0(MaxQ_output_folder(),"/")
-      }
+  # observe({
+  #   if(!is.null(MaxQ_output_folder)){
+  #     handlerExpr = {
+  #       req(nchar(MaxQ_output_folder())>0)
+  #       global_MaxQ_output_folder$datapath <- paste0(MaxQ_output_folder(),"/")
+  #     }
+  #   }
+  # })
+  observeEvent(input$MaxQ_output_folder, {
+
+    selected_folder <- choose.dir(caption = "Choose MaxQ output folder")
+    if(!is.na(selected_folder))
+    {
+      selected_folder <- gsub("\\\\","/",selected_folder)
+      global_MaxQ_output_folder$datapath <- selected_folder#paste0(selected_folder,"\\")
     }
   })
 
   ###choose Raw folder
-  shinyDirChoose(
-    input,
-    'Raw_folder',
-    roots = getVolumes(),
-    #filetypes = c('', 'txt', 'bigWig', "tsv", "csv", "bw")
-  )
+  # shinyDirChoose(
+  #   input,
+  #   'Raw_folder',
+  #   roots = getVolumes(),
+  #   #filetypes = c('', 'txt', 'bigWig', "tsv", "csv", "bw")
+  # )
   Raw_folder <- reactive({
     return(parseDirPath(volumes, input$Raw_folder))
   })
@@ -431,26 +443,39 @@ server <- function(input, output,session){
     global_Raw_folder$datapath
   })
 
-  observe({
-    if(!is.null(Raw_folder)){
-      handlerExpr = {
-        req(nchar(Raw_folder())>0)
-        global_Raw_folder$datapath <- paste0(Raw_folder(),"/")
-        if(global_MaxQ_output_folder$datapath == getwd())
-        {
-          global_MaxQ_output_folder$datapath <- paste0(Raw_folder(),"/")
-        }
-      }
+  # observe({
+  #   if(!is.null(Raw_folder)){
+  #     handlerExpr = {
+  #       req(nchar(Raw_folder())>0)
+  #       global_Raw_folder$datapath <- paste0(Raw_folder(),"/")
+  #       if(global_MaxQ_output_folder$datapath == getwd())
+  #       {
+  #         global_MaxQ_output_folder$datapath <- paste0(Raw_folder(),"/")
+  #       }
+  #     }
+  #   }
+  # })
+
+  observeEvent(input$Raw_folder, {
+
+    selected_folder <- choose.dir(caption = "Choose folder containing raw files")
+    if(!is.na(selected_folder))
+    {
+      selected_folder <- gsub("\\\\","/",selected_folder)
+      global_Raw_folder$datapath <- paste0(selected_folder,"/")
     }
   })
 
+
+
+
   ###choose DDAiceR output folder
-  shinyDirChoose(
-    input,
-    'DDAiceR_output',
-    roots = getVolumes(),
-    #filetypes = c('', 'txt', 'bigWig', "tsv", "csv", "bw")
-  )
+  # shinyDirChoose(
+  #   input,
+  #   'DDAiceR_output',
+  #   roots = getVolumes(),
+  #   #filetypes = c('', 'txt', 'bigWig', "tsv", "csv", "bw")
+  # )
   DDAiceR_output <- reactive({
     return(parseDirPath(volumes, input$DDAiceR_output))
   })
@@ -459,14 +484,25 @@ server <- function(input, output,session){
     global_DDAiceR_output$datapath
   })
 
-  observe({
-    if(!is.null(DDAiceR_output)){
-      handlerExpr = {
-        req(nchar(DDAiceR_output())>0)
-        global_DDAiceR_output$datapath <- paste0(DDAiceR_output(),"/")
-      }
+  # observe({
+  #   if(!is.null(DDAiceR_output)){
+  #     handlerExpr = {
+  #       req(nchar(DDAiceR_output())>0)
+  #       global_DDAiceR_output$datapath <- paste0(DDAiceR_output(),"/")
+  #     }
+  #   }
+  # })
+
+  observeEvent(input$DDAiceR_output, {
+
+    selected_folder <- choose.dir(caption = "Choose final output folder")
+    if(!is.na(selected_folder))
+    {
+      selected_folder <- gsub("\\\\","/",selected_folder)
+      global_DDAiceR_output$datapath <- selected_folder#paste0(selected_folder,"\\")
     }
   })
+
 
   ###combine all settings information into a list
 
