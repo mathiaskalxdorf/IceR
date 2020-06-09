@@ -26,6 +26,8 @@
 '%not in%' <- function(x,y)!('%in%'(x,y))
 
 #' Start GUI of IceR
+#' @details Graphical user interface for IceR. Allows setting up of an IceR run, specification of variable parameters and visualization of quality control plots after successful requantification.
+#' @return IceR results are stored in a user-specified folder.
 runIceR <- function() {
   appDir <- system.file("shiny", "IceR_UI", package = "IceR")
   if (appDir == "") {

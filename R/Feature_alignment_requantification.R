@@ -17,7 +17,7 @@ maxDensity <- function(data)
 #' @return Resulting mzXML files are stored in a sub-directory within specified raw file folder
 run_msconvert_raw_mzXML <- function(path_to_raw=NULL)
 {
-  library(ff)
+  suppressWarnings(suppressMessages(library(ff,quietly = T)))
 
   if(is.null(path_to_raw))path_to_raw <- choose.dir(caption = "Select folder containing raw files")
 
@@ -107,11 +107,11 @@ run_msconvert_raw_mzXML <- function(path_to_raw=NULL)
 #' @return Resulting ion tables are stored in a sub-directory (all_ion_lists) of the mzXML folder as .RData files
 mzxml_to_list <- function(path_to_mzXML,n_cores=2)
 {
-  library(doParallel)
+  suppressWarnings(suppressMessages(library(doParallel,quietly = T)))
 
   convert <- function(mzXMLfile,path_to_mzXML)
   {
-    library("readMzXmlData")
+    suppressWarnings(suppressMessages(library("readMzXmlData",quietly = T)))
 
     data <- paste(path_to_mzXML,"\\",mzXMLfile,sep="")
     pb <- winProgressBar(title = "Read mzXML",label=paste( round(0/1*100, 0),"% done"), min = 0,max = 1, width = 300)
@@ -129,7 +129,7 @@ mzxml_to_list <- function(path_to_mzXML,n_cores=2)
     }
 
     ###now extract data
-    library(data.table)
+    suppressWarnings(suppressMessages(library(data.table,quietly = T)))
     dat <- as.data.table(matrix(ncol=3,nrow=rowcount))
     colnames(dat) <- c("m.z","RT","Intensity")
     sample <- mzXMLfile
@@ -206,11 +206,11 @@ mzxml_to_list <- function(path_to_mzXML,n_cores=2)
 align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,output_file_names_add="IceR_analysis",mz_window=NA,min_mz_window = 0.001,RT_window=NA,min_RT_window=1,min_num_ions_collapse=10,feature_mass_deviation_collapse=0.002,only_unmodified_peptides=F,sample_list=NULL,remove_contaminants=T)
 {
   options(warn=-1)
-  library(data.table)
-  library(stringr)
-  library(lubridate)
-  library(mgcv)
-  library(ff)
+  suppressWarnings(suppressMessages(library(data.table,quietly = T)))
+  suppressWarnings(suppressMessages(library(stringr,quietly = T)))
+  suppressWarnings(suppressMessages(library(lubridate,quietly = T)))
+  suppressWarnings(suppressMessages(library(mgcv,quietly = T)))
+  suppressWarnings(suppressMessages(library(ff,quietly = T)))
   use_mz_at_max_int_for_correction=F
 
   if(output_file_names_add != "")output_file_names_add <- paste("_",output_file_names_add,sep="")
@@ -668,7 +668,6 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
     for(i in 1:max(allpeptides$Charge))
     {
-      print(i)
       allpeptides_frag[[i]] <- allpeptides[which(allpeptides$Charge == i),]
       min_max_mz <- c(floor(min(allpeptides_frag[[i]]$m.z)),ceiling(max(allpeptides_frag[[i]]$m.z)))
       indices <- matrix(ncol=4,nrow=min_max_mz[2]-min_max_mz[1])
@@ -1467,7 +1466,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       {
         ####train random forest model for predicting mz calibration
 
-        library(randomForest)
+        suppressWarnings(suppressMessages(library(randomForest,quietly = T)))
 
         ###train a model per sample
         models <- list()
@@ -1770,10 +1769,10 @@ add_isotope_features <- function(path_to_features,feature_table_file_name="Featu
 add_missed_peptides <- function(path_to_features,feature_table_file_name="Features_aligned_merged.txt",path_to_fasta,min_AA_length=7,max_AA_length=25,max_add_per_protein=10,min_observations=5)
 {
   options(warn = -1)
-  library(Peptides)
-  library(randomForest)
-  library(seqinr)
-  library(cleaver)
+  suppressWarnings(suppressMessages(library(Peptides,quietly = T)))
+  suppressWarnings(suppressMessages(library(randomForest,quietly = T)))
+  suppressWarnings(suppressMessages(library(seqinr,quietly = T)))
+  suppressWarnings(suppressMessages(library(cleaver,quietly = T)))
   RT_calibration=T
   mz_calibration=T
 
@@ -2426,7 +2425,7 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
 requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_output,feature_table_file_name="Features_aligned_merged_IceR_analysis.txt.",output_file_names_add="IceR_analysis",RT_calibration=T,mz_calibration=T,abundance_estimation_correction = T,Quant_pVal_cut=0.05,n_cores=2,kde_resolution = 50,num_peaks_store = 5,plot_2D_peak_detection=F,alignment_variability_score_cutoff=0.05,alignment_scores_cutoff=0.05,mono_iso_alignment_cutoff=0.05,calc_peptide_LFQ=F,calc_protein_LFQ=T)
 {
   options(warn=-1)
-  library(mgcv)
+  suppressWarnings(suppressMessages(library(mgcv,quietly = T)))
   multiply_intensity_count=F
   peak_detection=T
 
@@ -2483,14 +2482,14 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
   ###Function to perform extraction on multiple threads. Depending on the available ram, the extraction can be run on several threads. However, the task is using much memory so that it is recommended to just run 2 threads in parallel if only 16 gb of ram are available.
   extract_intensities_worker <- function(Sample_IDs,features_select,path_to_raw,path_to_output_folder,RT_calibration,mz_calibration,peak_detection,n_cores,ion_intensity_cutoff=F,mean_background_ion_intensity_model = NA,sd_background_ion_intensity = NA,peak_min_ion_count=NA,kde_resolution=25,num_peaks_store=5,plots=F)
   {
-    library(doParallel)
+    suppressWarnings(suppressMessages(library(doParallel,quietly = T)))
 
     ####Function to extract intensities in respective extracted .RData for a list of selected features (or all features).
     ####indexing_RT_window defines how large each RT indexing window is to speed up subsetting. 0.5 min was observed to be good
     get_intensities <- function(Sample_ID,path,features_select,indexing_RT_window=0.1,RT_calibration,mz_calibration,peak_detection,ion_intensity_cutoff,mean_background_ion_intensity_model,sd_background_ion_intensity,peak_min_ion_count,kde_resolution,num_peaks_store,plots)
     {
-      library(lubridate)
-      library(stringr)
+      suppressWarnings(suppressMessages(library(lubridate,quietly = T)))
+      suppressWarnings(suppressMessages(library(stringr,quietly = T)))
 
       ###if no peak selection should be performed, extract all ions within the expected feature windows
       feature_no_peak_selection <- function(all_ion_data,selected_features,cur_sample,include_isotope_patterns = F,num_peaks_store=0)
@@ -2584,9 +2583,9 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
       feature_2D_peak_selection <- function(all_ion_data,selected_features,cur_sample,known_RT,delta_mz,delta_rt,RT_window_expand_factor=5,mz_window_expand_factor=4,include_isotope_patterns = F,n_raster_dens_matrix=50,local_maxima_k=3,max_delta_RT=2,max_delta_mz=0.005,peak_min_ion_count=5,RT_bw=0.5,mz_bw=0.002,num_peaks_store=5,plot=F,auto_adjust_kde_resolution=T)
       {
 
-        library(MASS)
-        library(raster)
-        library(ggtern)
+        suppressWarnings(suppressMessages(library(MASS,quietly = T)))
+        suppressWarnings(suppressMessages(library(raster,quietly = T)))
+        suppressWarnings(suppressMessages(library(ggtern,quietly = T)))
         peak_ion_data_list <- list()
 
         graph <- NA ##here we store graphical output if wanted
@@ -3558,7 +3557,7 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
     ####Function to call get_intensities and finally save resulting table as .tab data table
     extract_intensities <- function(Sample_ID,features_select,path_to_raw,path_to_output_folder,RT_calibration,mz_calibration,peak_detection,ion_intensity_cutoff,mean_background_ion_intensity_model,sd_background_ion_intensity,peak_min_ion_count,kde_resolution,num_peaks_store,plots)
     {
-      library(data.table)
+      suppressWarnings(suppressMessages(library(data.table,quietly = T)))
 
       res <- get_intensities(Sample_ID,path = path_to_raw,features_select=features_select,RT_calibration=RT_calibration,mz_calibration=mz_calibration,peak_detection=peak_detection,ion_intensity_cutoff = ion_intensity_cutoff,mean_background_ion_intensity_model=mean_background_ion_intensity_model,sd_background_ion_intensity=sd_background_ion_intensity,peak_min_ion_count=peak_min_ion_count,kde_resolution=kde_resolution,num_peaks_store = num_peaks_store,plots=plots)
 
@@ -4019,8 +4018,8 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
     ###add step to store information which peak was finally picked
     peak_decision <- function(features_select,peak_quant,samples,s,RT_correction_factors,mz_correction_factors,features_intensity_sample,Ioncount_sample,feature_with_background_intensity_sample,Ioncount_with_background_sample,peak_selected_sample,delta_mz,delta_rt,peak_min_ion_count,chunk=NULL,num_chunks=NULL,progress=T)
     {
-      library(data.table)
-      library(lubridate)
+      suppressWarnings(suppressMessages(library(data.table,quietly = T)))
+      suppressWarnings(suppressMessages(library(lubridate,quietly = T)))
       if(progress == T)
       {
         pb <- winProgressBar(title = paste("Prepare for peak selection -",samples[s]),label=paste( round(0/1*100, 0),"% done"), min = 0,max = 1, width = 300)
@@ -4441,7 +4440,7 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
       }
 
       ######perform peak decision
-      library(doParallel)
+      suppressWarnings(suppressMessages(library(doParallel,quietly = T)))
 
       cl <- makeCluster(n_cores)
       registerDoParallel(cl)
@@ -5052,9 +5051,9 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
   {
     if(length(which(peaks$known == 1)) >= 10)
     {
-      library(data.table)
-      library(randomForest)
-      library(mgcv)
+      suppressWarnings(suppressMessages(library(data.table,quietly = T)))
+      suppressWarnings(suppressMessages(library(randomForest,quietly = T)))
+      suppressWarnings(suppressMessages(library(mgcv,quietly = T)))
       #select features for FDR estimation per sample
       if(!is.na(seed))set.seed(seed)
       temp_peaks <- peaks[which(peaks$peak == peaks$selected & peaks$known == 1 & !grepl("_i|_d",peaks$feature)),]
@@ -5156,7 +5155,7 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
         }
       }
 
-      library(doSNOW)
+      suppressWarnings(suppressMessages(library(doSNOW,quietly = T)))
 
       cl <- makeCluster(n_cores)#as.numeric(Sys.getenv('NUMBER_OF_PROCESSORS')))
       registerDoSNOW(cl)
@@ -5165,7 +5164,7 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
 
       res <- foreach(s=1:length(samples)) %dopar%
         {
-          library(data.table)
+          suppressWarnings(suppressMessages(library(data.table,quietly = T)))
           max <- 1
           pb <- winProgressBar(title = "Evaluate peak selection FDR",label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
 
@@ -5605,7 +5604,7 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
   ####impute missing values based on generalized additive model
   impute_feature_level_quant <- function(data,features,background_intensity_GAM_table_per_feature_sum)
   {
-    library(data.table)
+    suppressWarnings(suppressMessages(library(data.table,quietly = T)))
     quant_data <- data.table::copy(data)
     background_intensity_GAM_table_per_feature <- background_intensity_GAM_table_per_feature_sum
 
@@ -5881,8 +5880,8 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
 
   correct_intensities <- function(features,feature_sample_matrix_requantified,pval_quant,MaxQ_peptides_quant,main="",corr_factor=NA)
   {
-    library(data.table)
-    library(dplyr)
+    suppressWarnings(suppressMessages(library(data.table,quietly = T)))
+    suppressWarnings(suppressMessages(library(dplyr,quietly = T)))
 
     if(is.na(corr_factor)) ###no correction factor specified so correction will be determined and then applied
     {
@@ -5974,10 +5973,10 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
   {
     pb <- winProgressBar(title = "Prepare Top3 quantification",label=paste( round(0/1*100, 0),"% done"), min = 0,max = 1, width = 300)
     close(pb)
-    library(data.table)
-    library(lubridate)
-    library(matrixStats)
-    library(stringr)
+    suppressWarnings(suppressMessages(library(data.table,quietly = T)))
+    suppressWarnings(suppressMessages(library(lubridate,quietly = T)))
+    suppressWarnings(suppressMessages(library(matrixStats,quietly = T)))
+    suppressWarnings(suppressMessages(library(stringr,quietly = T)))
 
     feature_sample_matrix_requantified <- as.data.frame(feature_sample_matrix_requantified)
     if(!is.null(Quant_pvals))Quant_pvals <- as.data.frame(Quant_pvals)
@@ -6193,10 +6192,10 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
   {
     pb <- winProgressBar(title = "Prepare Total quantification",label=paste( round(0/1*100, 0),"% done"), min = 0,max = 1, width = 300)
     close(pb)
-    library(data.table)
-    library(lubridate)
-    library(matrixStats)
-    library(stringr)
+    suppressWarnings(suppressMessages(library(data.table,quietly = T)))
+    suppressWarnings(suppressMessages(library(lubridate,quietly = T)))
+    suppressWarnings(suppressMessages(library(matrixStats,quietly = T)))
+    suppressWarnings(suppressMessages(library(stringr,quietly = T)))
 
     feature_sample_matrix_requantified <- as.data.frame(feature_sample_matrix_requantified)
     if(!is.null(Quant_pvals))Quant_pvals <- as.data.frame(Quant_pvals)
@@ -6536,13 +6535,13 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
       {
         set.seed(seed)
         ##prepare for MaxLFQ algorithm
-        library(doSNOW)
-        library(data.table)
+        suppressWarnings(suppressMessages(library(doSNOW,quietly = T)))
+        suppressWarnings(suppressMessages(library(data.table,quietly = T)))
 
         calculate_LFQ <- function(peptide_quant_data,min_num_ratios=2,num_ratio_samples=NA)
         {
-          library(data.table)
-          library(robustbase)
+          suppressWarnings(suppressMessages(library(data.table,quietly = T)))
+          suppressWarnings(suppressMessages(library(robustbase,quietly = T)))
           #error function which is used to optimize ratios
           least_square_error <- function(par,ratio_mat)
           {
@@ -6878,13 +6877,13 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
       {
         set.seed(seed)
         ##prepare for MaxLFQ algorithm
-        library(doSNOW)
-        library(data.table)
+        suppressWarnings(suppressMessages(library(doSNOW,quietly = T)))
+        suppressWarnings(suppressMessages(library(data.table,quietly = T)))
 
         calculate_LFQ <- function(peptide_quant_data,min_num_ratios=2,num_ratio_samples=NA)
         {
-          library(data.table)
-          library(robustbase)
+          suppressWarnings(suppressMessages(library(data.table,quietly = T)))
+          suppressWarnings(suppressMessages(library(robustbase,quietly = T)))
           #error function which is used to optimize ratios
           least_square_error <- function(par,ratio_mat)
           {

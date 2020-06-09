@@ -1,7 +1,7 @@
-library(IceR)
-library(openxlsx)
-library(shiny)
-library(shinyFiles)
+suppressMessages(library(IceR))
+suppressMessages(library(openxlsx))
+suppressMessages(library(shiny))
+suppressMessages(library(shinyFiles))
 
 #panel for settings and run app
 run_panel <- fluidPage(
@@ -66,7 +66,7 @@ run_panel <- fluidPage(
            br(),br(),br(),
            h5("Minimal RT-Window"),
            sliderInput("min_RT_window", "",
-                       min = 0, max = 10, value = 1,step=0.5),
+                       min = 0, max = 10, value = 0.5,step=0.5),
 
            h5("RT-Window"),
            sliderInput("RT_window", "",

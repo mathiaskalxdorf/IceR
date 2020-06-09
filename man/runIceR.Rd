@@ -6,6 +6,12 @@
 \usage{
 runIceR()
 }
+\value{
+IceR results are stored in a user-specified folder.
+}
 \description{
 Start GUI of IceR
+}
+\details{
+Graphical user interface for IceR. Allows setting up of an IceR run, specification of variable parameters and visualization of quality control plots after successful requantification.
 }
