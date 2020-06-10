@@ -2422,7 +2422,7 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
 #' The performance of RT- and m/z-alignments over samples is visualized in "Performance of feature alignment.pdf"
 #' Estimation of required peptide abundance correction factors is visualized in "Correct feature abundance estimations Signal_Background_intensity.pdf".
 #' Intermediate results of the function are stored in RData files.
-requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_output,feature_table_file_name="Features_aligned_merged_IceR_analysis.txt.",output_file_names_add="IceR_analysis",RT_calibration=T,mz_calibration=T,abundance_estimation_correction = T,Quant_pVal_cut=0.05,n_cores=2,kde_resolution = 50,num_peaks_store = 5,plot_2D_peak_detection=F,alignment_variability_score_cutoff=0.05,alignment_scores_cutoff=0.05,mono_iso_alignment_cutoff=0.05,calc_peptide_LFQ=F,calc_protein_LFQ=T)
+requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_output,feature_table_file_name="Features_aligned_merged_IceR_analysis.txt",output_file_names_add="IceR_analysis",RT_calibration=T,mz_calibration=T,abundance_estimation_correction = T,Quant_pVal_cut=0.05,n_cores=2,kde_resolution = 50,num_peaks_store = 5,plot_2D_peak_detection=F,alignment_variability_score_cutoff=0.05,alignment_scores_cutoff=0.05,mono_iso_alignment_cutoff=0.05,calc_peptide_LFQ=F,calc_protein_LFQ=T)
 {
   options(warn=-1)
   suppressWarnings(suppressMessages(library(mgcv,quietly = T)))
