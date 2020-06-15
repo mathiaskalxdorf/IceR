@@ -8,7 +8,7 @@ requantify_features(
   path_to_features,
   path_to_mzXML,
   path_to_MaxQ_output,
-  feature_table_file_name = "Features_aligned_merged_IceR_analysis.txt.",
+  feature_table_file_name = "Features_aligned_merged_IceR_analysis.txt",
   output_file_names_add = "IceR_analysis",
   RT_calibration = T,
   mz_calibration = T,
