@@ -1,6 +1,7 @@
 # IceR - Quantitative Label-Free Proteomics Workflow
+
 <p align="center"> 
-<img src="images/IceR.jpg" style="width: 50%; height: 50%"/>​
+<img src="images/IceR.jpg" style="width: 50%; height: 50%"/>
 </p>
 
 ### Description
@@ -37,7 +38,7 @@ runIceR()
 ```
 ... the GUI opens.
 <p align="center"> 
-<img src="images/IceR_gui.jpg" style="width: 50%; height: 50%"/>​
+<img src="images/IceR_gui.jpg" style="width: 50%; height: 50%"/>
 </p>
 
 It allows setting up the IceR run. Among others, the following parameters can be modified:
@@ -57,10 +58,107 @@ A recent computational system should be able to complete the IceR workflow for t
 Afterwards, some quality control plots for the alignment and quantification can be visualized by clicking on the tap "QC" and subsequently on the respective button:
 
 <p align="center"> 
-<img src="images/IceR_gui_QC_alignment.jpg" style="width: 50%; height: 50%"/>​
+<img src="images/IceR_gui_QC_alignment.jpg" style="width: 50%; height: 50%"/>
 </p>
 
 <p align="center"> 
-<img src="images/IceR_gui_QC_quantification.jpg" style="width: 50%; height: 50%"/>​
+<img src="images/IceR_gui_QC_quantification.jpg" style="width: 50%; height: 50%"/>
 </p>
- 
+
+Subsequently, we can investigate results in more detail and compare results to MaxQuant outputs.
+
+We need two additional R-packages to be installed for the following steps.
+```{r}
+install.packages("BiocManager")
+BiocManager::install("PECA")
+install.packages("http://cran.r-project.org/src/contrib/Archive/rowr/rowr_1.1.3.tar.gz", repos=NULL, type="source")
+```
+Now we load IceR library.
+```{r}
+library(IceR)
+```
+
+Next, we load IceR and MaxQ data using the respective functions supplyed by the ICeR package. A file-choose box will open to specify the location of the respective data. 
+
+```{r}
+IceR <- load_Requant_data()
+MaxQ <- load_MaxQ_data()
+```
+Add annotation information to both data sets. The first two samples correspond to two replicates of 3 % E.coli lysate spiked into constant human background. The second two samples correspond to 9 % E.coli spike-in conditions.
+```{r}
+anno <- data.frame(Spike = c(3,3,9,9))
+IceR <- add_annotations(IceR,anno)
+MaxQ <- add_annotations(MaxQ,anno)
+```
+Next, Perform median normalization of protein- and peptide-level data based on background proteome (human proteins).
+```{r}
+IceR$Protein_level$Quant_data_norm <- normalize_data(IceR$Protein_level$Quant_data,method = "median",main = "IceR - Protein-level data",norm_on_subset = which(IceR$Protein_level$Meta_data$Organism == "Homo sapiens"))
+IceR$Peptide_level$Quant_data_norm <- normalize_data(IceR$Peptide_level$Quant_data,method = "median",main = "IceR - Peptide-level data",norm_on_subset = which(IceR$Peptide_level$Meta_data$Organism == "Homo sapiens"))
+MaxQ$Protein_level$Quant_data_norm <- normalize_data(MaxQ$Protein_level$Quant_data,method = "median",main = "MaxQ - Protein-level data",norm_on_subset = which(MaxQ$Protein_level$Meta_data$Organism == "Homo sapiens"))
+MaxQ$Peptide_level$Quant_data_norm <- normalize_data(MaxQ$Peptide_level$Quant_data,method = "median",main = "MaxQ - Peptide-level data",norm_on_subset = which(MaxQ$Peptide_level$Meta_data$Organism == "Homo sapiens"))
+```
+<p align="center"> 
+<img src="images/Normalization.jpg" style="width: 50%; height: 50%"/>
+</p>
+
+We continue with a look on general numbers per data set.
+```{r}
+MaxQ <- determine_general_numbers(MaxQ)
+IceR <- determine_general_numbers(IceR)
+
+compare_general_numbers(list(MaxQ=MaxQ,IceR=IceR),colors = c("darkgrey","chocolate2"))
+```
+<p align="center"> 
+<img src="images/General_numbers.jpg" style="width: 50%; height: 50%"/>
+</p>
+
+We see a clear reduction of missing values.
+
+Check CVs of quantification in both data sets.
+```{r}
+plot_accuracy(list(MaxQ=MaxQ,IceR=IceR),inset = c(0,0),Legendpos = "topright",colors = c("chocolate2","darkgrey"))
+```
+<p align="center"> 
+<img src="images/CV_quant.jpg" style="width: 50%; height: 50%"/>
+</p>
+
+We see similar CVs in MaxQuant and IceR data, however, more data points are available especially on peptide level in case of IceR data.
+
+Finally, we perform differential expression (DE) analysis. Perform DE on protein-level in case of MaxQ data and on peptide-level (using PECA) in case of IceR data to make use of the highly increased amount of available data for IceR results.
+
+```{r}
+DE_MaxQ <- LIMMA_analysis(MaxQ$Protein_level$Quant_data_norm,assignments = MaxQ$Annotations$Spike,contrast = "9_vs_3",abundance_trend_prior = F)
+DE_IceR <- PECA_analysis(IceR$Peptide_level$Quant_data_norm,ids = IceR$Peptide_level$Meta_data$Gene_name,anno = IceR$Annotations$Spike,group1_name = "9",group2_name = "3")
+```
+
+Now plot Volcano plots with significance cutoffs (dashed black lines) at adj.pval < 0.05 and abs. logfc >= 1. Shape data points based on organism. Indicate true ratio (dashed red line). Add barchart representing number of detected true positives and false positives.
+
+```{r}
+plot(DE_MaxQ$logFC,-log10(DE_MaxQ$P.Value),xlab="Ratio, log2",ylab="-log10 pval",main="MaxQ - 9 % vs 3 % spike-in",col=ifelse(abs(DE_MaxQ$logFC)>=1 & DE_MaxQ$adj.P.Val < 0.05,"red","black"),pch=ifelse(rownames(DE_MaxQ) != toupper(rownames(DE_MaxQ)),19,1),xlim=c(-3,3))
+abline(h=-log10(0.05),lty=2)
+abline(v=1,lty=2)
+abline(v=-1,lty=2)
+abline(v=log2(9/3),lty=3,col="red")
+legend("top",legend = c("significant","not significant","Spiked","Background"),title = "Legend",col=c("red","black","black","black"),pch=c(15,15,19,1))
+
+plot(DE_IceR$logFC,-log10(DE_IceR$P.Value),xlab="Ratio, log2",ylab="-log10 pval",main="IceR - 9 % vs 3 % spike-in",col=ifelse(abs(DE_IceR$logFC)>=1 & DE_IceR$adj.P.Val < 0.05,"red","black"),pch=ifelse(rownames(DE_IceR) != toupper(rownames(DE_IceR)),19,1),xlim=c(-4,4))
+abline(h=-log10(0.05),lty=2)
+abline(v=1,lty=2)
+abline(v=-1,lty=2)
+abline(v=log2(9/3),lty=3,col="red")
+legend("top",legend = c("significant","not significant","Spiked","Background"),title = "Legend",col=c("red","black","black","black"),pch=c(15,15,19,1))
+
+MaxQ_TP <- length(which(DE_MaxQ$logFC>=1 & DE_MaxQ$adj.P.Val < 0.05 & rownames(DE_MaxQ) != toupper(rownames(DE_MaxQ))))
+MaxQ_FP <- length(which(abs(DE_MaxQ$logFC)>=1 & DE_MaxQ$adj.P.Val < 0.05 & rownames(DE_MaxQ) == toupper(rownames(DE_MaxQ))))
+IceR_TP <- length(which(DE_IceR$logFC>=1 & DE_IceR$adj.P.Val < 0.05 & rownames(DE_IceR) != toupper(rownames(DE_IceR))))
+IceR_FP <- length(which(abs(DE_IceR$logFC)>=1 & DE_IceR$adj.P.Val < 0.05 & rownames(DE_IceR) == toupper(rownames(DE_IceR))))
+plot_Data <- data.frame(MaxQ=c(MaxQ_TP,MaxQ_FP),IceR=c(IceR_TP,IceR_FP))
+Barplotsstacked(plot_Data,AvgLine = F,col=c("lightblue","grey"),margins = c(4,4,4,12),Legends = c("true positives","false positives"),Legendpos = "top",inset = c(0,0),main="Comparison of DE results",ylab="Count")
+```
+
+<p align="center"> 
+<img src="images/DE_results.jpg" style="width: 100%; height: 100%"/>
+</p>
+
+We see an increase in true positives by +23 % in case of the IceR analysis. Number of false positives is comparable.
+
