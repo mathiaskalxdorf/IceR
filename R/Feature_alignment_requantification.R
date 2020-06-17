@@ -30,15 +30,6 @@ run_msconvert_raw_mzXML <- function(path_to_raw=NULL)
   folders <- folders[which(grepl("ProteoWizard",folders))]
   folders <- folders[length(folders)]
 
-  if(file.exists(paste(folders,"\\msconvert.exe",sep="")))
-  {
-    path_to_msconvert <- paste(folders,"\\msconvert.exe",sep="")
-  }else
-  {
-    print("Select msconvert.exe. Can be usually found in C:/Users/user_name/AppData/Local/Apps/ProteoWizard Version")
-    path_to_msconvert <- file.choose()
-  }
-
   raw_files <- list.files(path_to_raw)
   raw_files <- raw_files[which(grepl("\\.raw",raw_files))]
 
@@ -49,6 +40,28 @@ run_msconvert_raw_mzXML <- function(path_to_raw=NULL)
 
   if(length(files_to_be_converted)>0)
   {
+    if(file.exists(paste(folders,"\\msconvert.exe",sep="")))
+    {
+      path_to_msconvert <- paste(folders,"\\msconvert.exe",sep="")
+    }else
+    {
+      print("Could not find msconvert.exe. Can be usually found in C:/Users/user_name/AppData/Local/Apps/ProteoWizard Version")
+      pb <- winProgressBar("Warning!",min = 0,max = 3,initial = 0,label = "Could not find msConvert.exe.",width = 500)
+
+      counter <- 1
+      label <- c("Typically located in C:/Users/user_name/AppData/Local/Apps/ProteoWizard Version",
+                 "Please specify location of msConvert.exe")
+      while(T)
+      {
+        Sys.sleep(3)
+        setWinProgressBar(pb,value = counter,label = label[counter])
+        counter <- counter + 1
+        if(counter == 4)break
+      }
+      close(pb)
+      path_to_msconvert <- file.choose()
+    }
+
     ###get user folder
     win_user_folder <- path.expand('~')
 

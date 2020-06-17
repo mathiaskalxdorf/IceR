@@ -5,6 +5,7 @@
 \title{Load IceR result files}
 \usage{
 load_Requant_data(
+  path_to_parameter_file = NA,
   path_to_requant_folder = NA,
   file_name_extension = NA,
   path_MaxQ = NA,
@@ -15,11 +16,13 @@ load_Requant_data(
 )
 }
 \arguments{
-\item{path_to_requant_folder}{Optional path to folder containing IceR outputs. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\}
+\item{path_to_parameter_file}{Optional path to IceR parameter file created during IceR run. By default set to NA. In this case a file browser is opened asking for the path to the Parameters.xlsx generated during IceR run.}
 
-\item{file_name_extension}{Optional file name extension of IceR output files. Only required if path_to_requant_folder directly specified.}
+\item{path_to_requant_folder}{Optional path to folder containing IceR outputs. Not required if path_to_parameter_file is defined. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\}
 
-\item{path_MaxQ}{Optional path to folder containing MaxQuant outputs. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\}
+\item{file_name_extension}{Optional file name extension of IceR output files. Not required if path_to_parameter_file is defined. Only required if path_to_requant_folder directly specified.}
+
+\item{path_MaxQ}{Optional path to folder containing MaxQuant outputs. Not required if path_to_parameter_file is defined. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\}
 
 \item{quant_value}{Specifying which protein quantification data should be used. Selection between "LFQ", "Total" or "Top3". By default set to "LFQ".}
 

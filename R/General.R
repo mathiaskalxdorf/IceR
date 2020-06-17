@@ -192,55 +192,76 @@ load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all
 }
 
 #' Load IceR result files
-#' @param path_to_requant_folder Optional path to folder containing IceR outputs. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\
-#' @param file_name_extension Optional file name extension of IceR output files. Only required if path_to_requant_folder directly specified.
-#' @param path_MaxQ Optional path to folder containing MaxQuant outputs. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\
+#' @param path_to_parameter_file Optional path to IceR parameter file created during IceR run. By default set to NA. In this case a file browser is opened asking for the path to the Parameters.xlsx generated during IceR run.
+#' @param path_to_requant_folder Optional path to folder containing IceR outputs. Not required if path_to_parameter_file is defined. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\
+#' @param file_name_extension Optional file name extension of IceR output files. Not required if path_to_parameter_file is defined. Only required if path_to_requant_folder directly specified.
+#' @param path_MaxQ Optional path to folder containing MaxQuant outputs. Not required if path_to_parameter_file is defined. By default set to NA. In this case a file browser is opened. If path is directly specified, it has to end with \\
 #' @param quant_value Specifying which protein quantification data should be used. Selection between "LFQ", "Total" or "Top3". By default set to "LFQ".
 #' @param min_feat_count Minimal required number of quantified features per protein. By default set to 1.
 #' @param min_feat_count_criteria Criteria how to count quantified features per protein. Either all or only unique peptide features are counted. By default set to "all".
 #' @param imputed Boolean value indicating if data with noise model based imputation should be used. By default set to T.
 #' @details Wrapper function to load and filter IceR results.
 #' @return List object containing protein and peptide quantification information in sub-lists named Protein_level and Peptide_level, respectively.
-load_Requant_data <- function(path_to_requant_folder=NA,file_name_extension=NA,path_MaxQ=NA,quant_value=c("LFQ","Total","Top3"),min_feat_count=1,min_feat_count_criteria=c("all","unique"),imputed=T)
+load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=NA,file_name_extension=NA,path_MaxQ=NA,quant_value=c("LFQ","Total","Top3"),min_feat_count=1,min_feat_count_criteria=c("all","unique"),imputed=T)
 {
   options(warn=-1)
   library(openxlsx)
   quant_value <- quant_value[1]
   min_feat_count_criteria <- min_feat_count_criteria[1]
-  if(is.na(path_to_requant_folder) | is.na(file_name_extension))
+
+  if(is.na(path_to_parameter_file) & is.na(path_to_requant_folder) & is.na(file_name_extension) & is.na(path_MaxQ))
   {
-    print("Select Features_x.tab file")
-    path_to_requant <- file.choose()
-    temp <- unlist(gregexpr("\\\\",path_to_requant))
-    path_to_requant_folder <- substr(path_to_requant,1,temp[length(temp)])
-    file_name_extension <- substr(path_to_requant,temp[length(temp)]+1,200)
-    file_name_extension <- gsub("Features_|\\.tab","",file_name_extension)
-    print(paste("Selected path to DDAiceR output:",path_to_requant_folder))
-    print(paste("Selected DDAiceR output name:",file_name_extension))
+    print("Select Parameters.xlsx")
+    parameters <- read.xlsx(file.choose(),1)
+    path_to_requant_folder <- paste(parameters$Setting[3],"/",sep="")
+    file_name_extension <- paste("_",parameters$Setting[4],sep="")
+    path_to_MaxQ <- paste(parameters$Setting[2],"/",sep="")
+    MaxQ_data <- read.table(paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+    MaxQ_data$Organism <- substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
+    MaxQ_data$ID <- str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+  }else if(!is.na(path_to_parameter_file))
+  {
+    parameters <- read.xlsx(path_to_parameter_file,1)
+    path_to_requant_folder <- paste(parameters$Setting[3],"/",sep="")
+    file_name_extension <- paste("_",parameters$Setting[4],sep="")
+    path_to_MaxQ <- paste(parameters$Setting[2],"/",sep="")
   }else
   {
-    file_name_extension <- paste("_",file_name_extension,sep="")
-    print(paste("Selected path to DDAiceR output:",path_to_requant_folder))
-    print(paste("Selected DDAiceR output name:",file_name_extension))
+    if(is.na(path_to_requant_folder) | is.na(file_name_extension))
+    {
+      print("Select Features_x.tab file")
+      path_to_requant <- file.choose()
+      temp <- unlist(gregexpr("\\\\",path_to_requant))
+      path_to_requant_folder <- substr(path_to_requant,1,temp[length(temp)])
+      file_name_extension <- substr(path_to_requant,temp[length(temp)]+1,200)
+      file_name_extension <- gsub("Features_|\\.tab","",file_name_extension)
+    }else
+    {
+      file_name_extension <- paste("_",file_name_extension,sep="")
+    }
+
+    if(is.na(path_MaxQ))
+    {
+      print("Select a file in the corresponding MaxQuant output folder")
+      path_to_MaxQ <- file.choose()
+      temp <- unlist(gregexpr("\\\\",path_to_MaxQ))
+      path_to_MaxQ <- substr(path_to_MaxQ,1,temp[length(temp)])
+      MaxQ_data <- read.table(paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+      MaxQ_data$Organism <- substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
+      MaxQ_data$ID <- str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+
+    }else
+    {
+      path_to_MaxQ <- path_MaxQ
+      MaxQ_data <- read.table(paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+      MaxQ_data$Organism <- substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
+      MaxQ_data$ID <- str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+    }
   }
 
-  if(is.na(path_MaxQ))
-  {
-    print("Select a file in the corresponding MaxQuant output folder")
-    path_to_MaxQ <- file.choose()
-    temp <- unlist(gregexpr("\\\\",path_to_MaxQ))
-    path_to_MaxQ <- substr(path_to_MaxQ,1,temp[length(temp)])
-    MaxQ_data <- read.table(paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
-    MaxQ_data$Organism <- substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
-    MaxQ_data$ID <- str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
-    print(paste("Selected path to MaxQuant output:",path_to_MaxQ))
-  }else
-  {
-    path_to_MaxQ <- path_MaxQ
-    MaxQ_data <- read.table(paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
-    MaxQ_data$Organism <- substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
-    MaxQ_data$ID <- str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
-  }
+  print(paste("Selected path to IceR output:",path_to_requant_folder))
+  print(paste("Selected IceR output name:",file_name_extension))
+  print(paste("Selected path to MaxQuant output:",path_to_MaxQ))
 
   if(quant_value == "Total" & imputed == F)protein_quant_tab <- "Total"
   if(quant_value == "Total" & imputed == T)protein_quant_tab <- "Total_imputed"
@@ -1612,3 +1633,155 @@ PECA_analysis <- function(peptide_data,peptide_data_quant_significance=NULL,ids,
 
   return(DE_results)
 }
+
+#' Perform differential expression analysis using LIMMA
+#' @param data Table of protein quantifications with samples in columns and features in rows.
+#' @param assignments Character vector of annotations of grouping per sample. By default set to NULL. In this case an ordinary one-sample test is performed.
+#' @param batch Optional character vector specifying sample batches.
+#' @param tech_reps Optional character vector specifying if samples are technical replicates
+#' @param contrast String of format Group1_vs_Group2 specifying contrast of interest. Replace Group1 and Group2 by groups specified in assignments.
+#' @details Perform differential expression analysis using R-package LIMMA.
+#' @return Returns a matrix which rows correspond to the proteins under analysis and columns indicate the corresponding abundance ratio, t-statistic, p-value and FDR adjusted p-value.
+LIMMA_analysis <- function(data,assignments=NULL,batch=NULL,tech_reps=NULL,contrast=NULL)
+{
+  library(limma)
+  library(tibble)
+  library(matrixStats)
+
+  if(!is.null(assignments))
+  {
+    if(length(unique(assignments))>2 & is.null(contrast))
+    {
+      print("Please specify a contrast.")
+      break
+    }
+    if(!is.null(contrast))
+    {
+      assignments <- as.character(assignments)
+      contrasts <- str_split(contrast,"_vs_",simplify = T)
+      assignments[assignments==contrasts[2]] <- "a" ###Group2 to which Group1 should be compared
+      assignments[assignments==contrasts[1]] <- "b" ###Group1
+      ###now change all other groups to c,d...if neccesarry
+      if(length(which(unique(assignments) %not in% c("a","b"))) > 0)
+      {
+        groups <- unique(assignments)[which(unique(assignments) %not in% c("a","b"))]
+        for(g in groups)
+        {
+          assignments[assignments==g] <- paste("others",which(groups==g),sep="_")
+        }
+      }
+    }
+
+    assignments <- as.data.frame(assignments)
+    if(names(assignments) != "Group"){names(assignments) <- "Group"}
+
+    data <- data[,order(assignments$Group)]
+    batch <- batch[order(assignments$Group)]
+    assignments <- assignments[order(assignments$Group),,drop=F]
+
+    if(!is.null(batch) & length(unique(batch))>1)
+    {
+      assignments$batch <- batch
+      mm <- model.matrix(~factor(Group) + factor(batch), assignments)
+    }else
+    {
+      mm <- model.matrix(~factor(Group), assignments)
+    }
+    if(is.null(tech_reps))
+    {
+      fit <- lmFit( data, mm)
+    }else
+    {
+      dc <- duplicateCorrelation(data, design=mm,block=tech_reps)
+      fit <- lmFit( data, mm,block=tech_reps, correlation=dc$consensus)
+    }
+
+    res <- topTable(eBayes(fit), coef = 2, number = Inf)#length(unique(assignments$Group))
+
+    if(is.null(contrast))
+    {
+      if(length(unique(assignments$Group)) == 2)
+      {
+        colnames(res)[1] <- "logFC"
+        if(any(unique(assignments$Group) != unique(assignments$Group)[order(unique(assignments$Group))]))###wrong order, invert
+        {
+          res$logFC <- -1*res$logFC
+        }
+      }
+      ###add median standard deviation column per gene and condition
+      sds <- NULL
+      for(c in unique(assignments$Group))
+      {
+        sds <- cbind(sds,rowSds(as.matrix(data[,which(assignments$Group == c)]),na.rm=T))
+      }
+      rownames(sds) <- rownames(data)
+      sds <- sds[match(rownames(res),rownames(sds)),]
+      res$median_sd <- rowMedians(sds,na.rm=T)
+
+      ###Add number of valid data points per group
+      n_data_points <- NULL
+      for(c in unique(assignments$Group))
+      {
+        n_data_points <- cbind(n_data_points,rowSums(!is.na(data[,which(assignments$Group == c)])))
+      }
+      n_data_points <- as.data.frame(n_data_points)
+      colnames(n_data_points) <- paste("n_data_points_",unique(assignments$Group),sep="")
+      rownames(n_data_points) <- rownames(data)
+      n_data_points <- n_data_points[match(rownames(res),rownames(n_data_points)),]
+
+      res <- cbind(res,n_data_points)
+    }else
+    {
+      ###add median standard deviation column per gene and condition
+      sds <- NULL
+      for(c in unique(assignments$Group)[1:2])
+      {
+        sds <- cbind(sds,rowSds(as.matrix(data[,which(assignments$Group == c)]),na.rm=T))
+      }
+      rownames(sds) <- rownames(data)
+      sds <- sds[match(rownames(res),rownames(sds)),]
+      res$median_sd <- rowMedians(sds,na.rm=T)
+
+      ###Add number of valid data points per group
+      n_data_points <- NULL
+      for(c in unique(assignments$Group)[1:2])
+      {
+        n_data_points <- cbind(n_data_points,rowSums(!is.na(data[,which(assignments$Group == c)])))
+      }
+      n_data_points <- as.data.frame(n_data_points)
+      colnames(n_data_points)[1] <- paste("n_data_points_",contrasts[2],sep="")
+      colnames(n_data_points)[2] <- paste("n_data_points_",contrasts[1],sep="")
+
+      rownames(n_data_points) <- rownames(data)
+      n_data_points <- n_data_points[match(rownames(res),rownames(n_data_points)),]
+
+      res <- cbind(res,n_data_points)
+    }
+
+  }else
+  {
+    if(!is.null(batch))
+    {
+      assignments <- data.frame(batch=batch)
+      mm <- model.matrix(~0 + factor(batch), assignments)
+
+      fit <- lmFit( data, mm)
+
+    }else
+    {
+      fit <- lmFit(data)
+    }
+
+    res <- topTable(eBayes(fit), coef = 1, number = Inf)
+    ###add median standard deviation column per gene and condition
+    res$median_sd <- rowSds(as.matrix(data[match(rownames(res),rownames(data)),]),na.rm=T)
+
+    ###add number of data points
+    res$n_data_points <- rowSums(!is.na(data))[match(rownames(res),rownames(data))]
+
+  }
+
+  return(res)
+}
+
+

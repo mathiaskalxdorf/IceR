@@ -44,5 +44,6 @@ Imports:
     tidyr
 Suggests:
     cleaver,
-    PECA
+    PECA,
+    rowr
 RoxygenNote: 7.1.0

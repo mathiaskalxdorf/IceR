@@ -1,0 +1,83 @@
+[33mcommit 68330ab88ac477c337e935ebdac798f4d9a9bdd4[m[33m ([m[1;36mHEAD[m[33m)[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Mon Jun 15 07:48:17 2020 +0200
+
+    nothing
+
+[33mcommit b3ffa3a25e79f494bbd233eb9b7403e441ddee62[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Wed Jun 10 06:17:18 2020 +0200
+
+    no change
+
+[33mcommit cfba58bdc5d38399c21d2017154fd987690ec40c[m[33m ([m[1;31morigin/master[m[33m, [m[1;32mmaster[m[33m)[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Tue Jun 9 15:30:06 2020 +0200
+
+    Removed html test
+
+[33mcommit 338fdb63abf69583ed21404a195ce07f0b3cda1d[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Tue Jun 9 15:26:57 2020 +0200
+
+    Initialize HTML page
+
+[33mcommit 2b2d982411194d904f5cfe3b5b7bf40db2d95cee[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Tue Jun 9 15:09:48 2020 +0200
+
+    IceR
+
+[33mcommit e30c818ac8aab20b114bc2755db411d02c7cde85[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Tue Jun 9 14:41:42 2020 +0200
+
+    Suppress all messages and warnings during loading of libraries
+
+[33mcommit 4e7e417a421c3fd55e0b43d664f8efdeee3a0cae[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Mon Jun 8 16:04:59 2020 +0200
+
+    Finalizing IceR package. Adding description text per function
+
+[33mcommit 148502609201d5c6d83c098119e9df04b629cdef[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Mon Jun 8 09:13:25 2020 +0200
+
+    Change project name to IceR
+
+[33mcommit 8128525d19365788ca4f6cbbb8b3e558df4ac6a6[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Mon Jun 8 09:07:19 2020 +0200
+
+    removed larger window mode
+
+[33mcommit a62cd04bea6bb31e7db6c65e18a075e38f4aeb50[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Mon Jun 8 09:06:47 2020 +0200
+
+    Change project name to IceR
+
+[33mcommit 241623e750f17af5027ee56cbd43630abc7df63b[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Mon Jun 8 09:04:42 2020 +0200
+
+    Change project name
+
+[33mcommit dbb9065ee3e302e41769aeac450f4f337ae525d2[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Mon Jun 8 09:02:15 2020 +0200
+
+    nothing new
+
+[33mcommit f0eac1a111dac280c7a94974779dc43e1503cba9[m
+Author: Mathias Kalxdorf <mathiaskalxdorf@gmail.com>
+Date:   Mon Jun 8 09:01:37 2020 +0200
+
+    updates
+
+[33mcommit 99a53f368dab58a3d2efaa677c0d9d36bf0ddb34[m
+Author: Lokaler Administratoraccount <admm474f@b230-nb03.inet.dkfz-heidelberg.de>
+Date:   Sun Mar 22 19:50:39 2020 +0100
+
+    Version 0.9 of DDAiceR
