@@ -1,4 +1,3 @@
-# IceR - Quantitative Label-Free Proteomics Workflow
 
 <p align="center"> 
 <img src="images/IceR.jpg" style="width: 100%; height: 100%"/>
