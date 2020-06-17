@@ -1,7 +1,7 @@
 # IceR - Quantitative Label-Free Proteomics Workflow
 
 <p align="center"> 
-<img src="images/IceR.jpg" style="width: 50%; height: 50%"/>
+<img src="images/IceR.jpg" style="width: 100%; height: 100%"/>
 </p>
 
 ### Description
@@ -38,7 +38,7 @@ runIceR()
 ```
 ... the GUI opens.
 <p align="center"> 
-<img src="images/IceR_gui.jpg" style="width: 50%; height: 50%"/>
+<img src="images/IceR_gui.jpg" style="width: 100%; height: 100%"/>
 </p>
 
 It allows setting up the IceR run. Among others, the following parameters can be modified:
@@ -58,11 +58,11 @@ A recent computational system should be able to complete the IceR workflow for t
 Afterwards, some quality control plots for the alignment and quantification can be visualized by clicking on the tap "QC" and subsequently on the respective button:
 
 <p align="center"> 
-<img src="images/IceR_gui_QC_alignment.jpg" style="width: 50%; height: 50%"/>
+<img src="images/IceR_gui_QC_alignment.jpg" style="width: 100%; height: 100%"/>
 </p>
 
 <p align="center"> 
-<img src="images/IceR_gui_QC_quantification.jpg" style="width: 50%; height: 50%"/>
+<img src="images/IceR_gui_QC_quantification.jpg" style="width: 100%; height: 100%"/>
 </p>
 
 Subsequently, we can investigate results in more detail and compare results to MaxQuant outputs.
@@ -98,7 +98,7 @@ MaxQ$Protein_level$Quant_data_norm <- normalize_data(MaxQ$Protein_level$Quant_da
 MaxQ$Peptide_level$Quant_data_norm <- normalize_data(MaxQ$Peptide_level$Quant_data,method = "median",main = "MaxQ - Peptide-level data",norm_on_subset = which(MaxQ$Peptide_level$Meta_data$Organism == "Homo sapiens"))
 ```
 <p align="center"> 
-<img src="images/Normalization.jpg" style="width: 50%; height: 50%"/>
+<img src="images/Normalization.jpg" style="width: 100%; height: 100%"/>
 </p>
 
 We continue with a look on general numbers per data set.
@@ -109,7 +109,7 @@ IceR <- determine_general_numbers(IceR)
 compare_general_numbers(list(MaxQ=MaxQ,IceR=IceR),colors = c("darkgrey","chocolate2"))
 ```
 <p align="center"> 
-<img src="images/General_numbers.jpg" style="width: 50%; height: 50%"/>
+<img src="images/General_numbers.jpg" style="width: 100%; height: 100%"/>
 </p>
 
 We see a clear reduction of missing values.
@@ -119,7 +119,7 @@ Check CVs of quantification in both data sets.
 plot_accuracy(list(MaxQ=MaxQ,IceR=IceR),inset = c(0,0),Legendpos = "topright",colors = c("chocolate2","darkgrey"))
 ```
 <p align="center"> 
-<img src="images/CV_quant.jpg" style="width: 50%; height: 50%"/>
+<img src="images/CV_quant.jpg" style="width: 100%; height: 100%"/>
 </p>
 
 We see similar CVs in MaxQuant and IceR data, however, more data points are available especially on peptide level in case of IceR data.
