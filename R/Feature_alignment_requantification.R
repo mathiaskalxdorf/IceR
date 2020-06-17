@@ -5257,40 +5257,30 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
         selection_feature <- selection_feature_per_sample[[s]]
         if(length(which(peak_decision_same_without_peak_known == F))>0L)
         {
-          #prepare updated peaks table
-          # peaks_select_FDR <- data.table::copy(peaks)
-          # peaks_select_FDR$feature <- as.character(peaks_select_FDR$feature)
-          # selection_sample <- which(peaks_select_FDR$sample == samples[s] & peaks_select_FDR$feature %in% features$Feature_name[selection_feature])
-          # for(i in selection_feature)
-          # {
-          #   f <- features$Feature_name[i]
-          #   sel <- which(peaks_select_FDR$feature[selection_sample] == f)
-          #   set(peaks_select_FDR,as.integer(selection_sample[sel]),9L,peak_selected_select_FDR[i,s])
-          # }
+          selections_all <- 1:length(peak_decision_same_without_peak_known)
 
-          wrong_selections <- which(peak_decision_same_without_peak_known == F)
-          #compare quantification differences for situation where wrong peak was selected
-          compare_quant_results_for_wrong_decisions <- as.data.frame(matrix(ncol=2,nrow=length(wrong_selections)))
+          #compare quantification differences for all tests
+          compare_quant_results_for_wrong_decisions <- as.data.frame(matrix(ncol=2,nrow=length(selections_all)))
           colnames(compare_quant_results_for_wrong_decisions) <- c("correct","wrong")
-          rownames(compare_quant_results_for_wrong_decisions) <- features_select_FDR[[s]]$Feature_name[which(peak_decision_same_without_peak_known == F)]
+          rownames(compare_quant_results_for_wrong_decisions) <- features_select_FDR[[s]]$Feature_name[selections_all]
           compare_quant_results_for_wrong_decisions$correct <- as.numeric(compare_quant_results_for_wrong_decisions$correct)
           compare_quant_results_for_wrong_decisions$wrong <- as.numeric(compare_quant_results_for_wrong_decisions$wrong)
-          for(i in wrong_selections)
+          for(i in selections_all)
           {
-            ind <- which(wrong_selections == i)
+            ind <- i
             set(compare_quant_results_for_wrong_decisions,as.integer(ind),as.integer(1:2),list(log2(10^feature_with_background_intensity_select_FDR[selection_feature[i],s]),
                                                                                                log2(10^feature_with_background_intensity[selection_feature[i],s])))
           }
-          ##compare intensities of correct and wrong peak selections
-          #determine distribution of quantification deviations between correct and wrong
-          if(plot==T & length(wrong_selections)>=3L)
+          ##compare intensities of unbiased peak selection and correct peak
+          #determine distribution of quantification deviations between correct and unbiased selected peak
+          if(plot==T)
           {
-            plot(density(compare_quant_results_for_wrong_decisions$wrong-compare_quant_results_for_wrong_decisions$correct,na.rm=T),xlab="Intensity-wrong / Intensity-true, log2",main=paste(samples[s],"- Deviation in selected peak quantification"))
-            abline(v=0)
-            abline(v=-1,lty=2,col="red")
-            abline(v=1,lty=2,col="red")
+            # plot(density(compare_quant_results_for_wrong_decisions$wrong-compare_quant_results_for_wrong_decisions$correct,na.rm=T),xlab="Intensity-masked / Intensity-true, log2",main=paste(samples[s],"- Deviation in selected peak quantification"))
+            # abline(v=0)
+            # abline(v=-1,lty=2,col="red")
+            # abline(v=1,lty=2,col="red")
 
-            plot(compare_quant_results_for_wrong_decisions$correct,compare_quant_results_for_wrong_decisions$wrong,xlab="True peak quantification, log2",ylab="Wrong peak quantification, log2",main=paste(samples[s],"- Error in quantification"))
+            plot(compare_quant_results_for_wrong_decisions$correct,compare_quant_results_for_wrong_decisions$wrong,xlab="True peak quantification, log2",ylab="Masked peak quantification, log2",main=paste(samples[s],"- Error in quantification"))
             abline(a=0,b=1)
             abline(a=1,b=1,lty=2,col="red")
             abline(a=-1,b=1,lty=2,col="red")
@@ -5364,17 +5354,26 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
       Large_Intensity_delta_FDR <- NULL
       for(s in 1:length(samples))
       {
-        Total_FDR <- append(Total_FDR,results_peak_selection_FDR_all[[s]]$plot_data[1])
-        Large_Intensity_delta_FDR <- append(Large_Intensity_delta_FDR,results_peak_selection_FDR_all[[s]]$plot_data[2])
+        if(length(results_peak_selection_FDR_all[[s]]$peak_decision_same_without_peak_known) >= 100) ###require at least 100 identified peptides in a sample
+        {
+          Total_FDR <- append(Total_FDR,results_peak_selection_FDR_all[[s]]$plot_data[1])
+          Large_Intensity_delta_FDR <- append(Large_Intensity_delta_FDR,results_peak_selection_FDR_all[[s]]$plot_data[2])
+        }else
+        {
+          print(paste(samples[s],": Not enough known peaks for peak selection FDR estimation",sep=""))
+          Total_FDR <- append(Total_FDR,NA)
+          Large_Intensity_delta_FDR <- append(Large_Intensity_delta_FDR,NA)
+        }
+
       }
       names(Total_FDR) <- samples
       names(Large_Intensity_delta_FDR) <- samples
 
       if(plot == T)
       {
-        ylim <- c(0,ifelse(max(Total_FDR,na.rm=T)<5,5,max(Total_FDR,na.rm=T)))
-        p <- Barplots(Total_FDR,AvgLine = T,digits_average = 1,Name = samples,xlab = "",ylab="FDR [%]",main = "Peak selection FDR - Total",shownumbers = F,ylim=ylim)
-        abline(h=5,lty=2,col="red")
+        # ylim <- c(0,ifelse(max(Total_FDR,na.rm=T)<5,5,max(Total_FDR,na.rm=T)))
+        # p <- Barplots(Total_FDR,AvgLine = T,digits_average = 1,Name = samples,xlab = "",ylab="FDR [%]",main = "Peak selection FDR - Total",shownumbers = F,ylim=ylim)
+        # abline(h=5,lty=2,col="red")
 
         ylim <- c(0,ifelse(max(Large_Intensity_delta_FDR,na.rm=T)<5,5,max(Large_Intensity_delta_FDR,na.rm=T)))
         p <- Barplots(Large_Intensity_delta_FDR,AvgLine = T,digits_average = 1,Name = samples,xlab = "",ylab="FDR [%]",main = "Peak selection FDR - > 2-fold intensity difference",shownumbers = F,ylim=ylim)
@@ -5405,7 +5404,7 @@ requantify_features <- function(path_to_features,path_to_mzXML,path_to_MaxQ_outp
   {
     for(i in 1:length(FDR_peak_selection$Total_FDR))
     {
-      print(paste(samples[i]," - FDR of peak selection: ",round(FDR_peak_selection$Total_FDR[i],digits=1)," % (with > 2-fold wrong abundance after filtering: ",round(FDR_peak_selection$Large_Intensity_delta_FDR[i],digits=1)," %)",sep=""))
+      print(paste(samples[i]," - FDR of peak selection: ",round(FDR_peak_selection$Large_Intensity_delta_FDR[i],digits=1)," %",sep=""))
     }
   }
 
