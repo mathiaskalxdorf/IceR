@@ -2,7 +2,7 @@
 % Please edit documentation in R/Feature_alignment_requantification.R
 \name{align_features}
 \alias{align_features}
-\title{Perform alignment of pre-determined MS1-features by MaxQuant over proteomics samples}
+\title{Perform alignment of pre-determined MS1-features by MaxQuant over proteomics samples either analyzed on an Orbitrap machine (e.g. Q-Exactive or Orbitrap Fusion) or a TIMS-ToF Pro}
 \usage{
 align_features(
   path_to_MaxQ_output,
@@ -17,7 +17,10 @@ align_features(
   feature_mass_deviation_collapse = 0.002,
   only_unmodified_peptides = F,
   sample_list = NULL,
-  remove_contaminants = T
+  remove_contaminants = T,
+  MassSpec_mode = c("Orbitrap", "TIMSToF"),
+  IM_window = NA,
+  min_IM_window = 0.002
 )
 }
 \arguments{
@@ -46,12 +49,18 @@ align_features(
 \item{sample_list}{Character vector (raw file names) listing which samples should be aligned. By default all samples occuring in MaxQuant outputs are aligned.}
 
 \item{remove_contaminants}{Boolean value indicating if peptide features labeled as contaminants should be removed. By default set to T.}
+
+\item{MassSpec_mode}{String being either "Orbitrap" or "TIMSToF" specifying by which type of Mass Spectrometer the data was generated. By default it expects Thermo Orbitrap data.}
+
+\item{IM_window}{Numeric value indicating maximal ion mobility (inverse K0) deviation around a center. By default set to NA which indicates that the function determines automatically this parameter based on sd of ion mobility of identified peptides between samples.}
+
+\item{min_IM_window}{Numberic value indicating how large the automatically determined ion mobility-window (inverse K0) should be. By default set to 0.002. Only required if ion mobility alignment window should be automatically determined. If set to NA, no minimal window size will be required.}
 }
 \value{
 Outputs are stored in the sub-directory Temporary_files within specified output folder. MaxQuant allpeptides.txt and evidence.txt are converted to RData files. QC plots of estimated alignment windows as well as of random forest modesl and generalized additive models are stored in a QC_plots.pdf. Relevant QC data is stored in Feature_alignment_QC_data.RData. Aligned IceR features are stored in Features_aligned_merged.txt
 }
 \description{
-Perform alignment of pre-determined MS1-features by MaxQuant over proteomics samples
+Perform alignment of pre-determined MS1-features by MaxQuant over proteomics samples either analyzed on an Orbitrap machine (e.g. Q-Exactive or Orbitrap Fusion) or a TIMS-ToF Pro
 }
 \details{
 Performs the first steps of the IceR workflow: 1) Alignment window determination if not specified. 2) Alignment of MaxQuant features into IceR features. 3) Transfer of sequence information between MaxQuant features aligned into IceR features. 4) Extraction, modelling and prediction of RT- and m/z-correction factor per IceR feature and sample.

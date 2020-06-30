@@ -12,6 +12,13 @@ run_panel <- fluidPage(
            h3("Run"),
            actionButton("run_all", "Total process",width = 170),
            br(),
+           radioButtons("massspecmode",
+                              h3("MassSpec-Mode"),
+                              choices = list("Orbitrap" = 1,
+                                             "TIMS-ToF Pro (use TIMS)" = 2,
+                                             "TIMS-ToF Pro (don´t use TIMS)" = 3),
+                              selected = 1),
+
            #actionButton("run_feature_alignment", "Only feature alignment",width = 170),
            br()#,
            #actionButton("run_requantification", "Only quantification",width = 170)
@@ -213,7 +220,7 @@ run_all_processes <- function(settings_list)
                                 substr(settings_list$MaxQ_output_folder,1,nchar(settings_list$MaxQ_output_folder)-1),
                                 settings_list$MaxQ_output_folder)
 
-  path_to_mzXML <- paste(settings_list$Raw_folder,"/","mzXML",sep="")
+
 
   path_to_output <- ifelse(endsWith(settings_list$IceR_output,"/"),
                            substr(settings_list$IceR_output,1,nchar(settings_list$IceR_output)-1),
@@ -224,6 +231,19 @@ run_all_processes <- function(settings_list)
   RT_window <- ifelse(settings_list$RT_window > 0,settings_list$RT_window,NA)
 
   n_cores <- settings_list$n_cores
+
+  MassSpec_mode <- ifelse(settings_list$MassSpec_settings=="1","Orbitrap","TIMSToF") #"1" Orbitrap "2" TIMSToF with IM "3" TIMSToF without IM
+  use_IM_data <- ifelse(settings_list$MassSpec_settings=="2",T,F)
+
+  path_to_extracted_spectra <- NA
+  path_to_mzXML <- NA
+  if(MassSpec_mode == "TIMSToF")
+  {
+    path_to_extracted_spectra <- paste(settings_list$Raw_folder,"/","all_ion_lists",sep="")
+  }else
+  {
+    path_to_mzXML <- paste(settings_list$Raw_folder,"/","mzXML",sep="")
+  }
 
   max_steps <- 4
   if(use_isotopes == T)max_steps <- max_steps + 1
@@ -236,7 +256,7 @@ run_all_processes <- function(settings_list)
     ###Save all parameters
     setProgress(cur_step,message="Prepare settings and parameters")
 
-    Parameters <- as.data.frame(matrix(ncol=2,nrow=24))
+    Parameters <- as.data.frame(matrix(ncol=2,nrow=26))
     colnames(Parameters) <- c("Settings_name","Setting")
     Parameters$Settings_name <- c("Path to raw files",
                                   "Path to MaxQ results",
@@ -261,7 +281,9 @@ run_all_processes <- function(settings_list)
                                   "plot_2D_peak_detection",
                                   "calc_protein_LFQ",
                                   "kde_resolution",
-                                  "num_peaks_store")
+                                  "num_peaks_store",
+                                  "MassSpec_mode",
+                                  "use_IM_data")
     Parameters$Setting <- c(settings_list$Raw_folder,
                             path_to_MaxQ_output,
                             path_to_output,
@@ -285,7 +307,9 @@ run_all_processes <- function(settings_list)
                             plot_2D_peak_detection,
                             calc_protein_LFQ,
                             settings_list$kde_resolution,
-                            settings_list$num_peaks_store)
+                            settings_list$num_peaks_store,
+                            MassSpec_mode,
+                            use_IM_data)
 
     sample_list <- list.files(settings_list$Raw_folder)
     sample_list <- sample_list[which(grepl("\\.raw",sample_list))]
@@ -296,16 +320,25 @@ run_all_processes <- function(settings_list)
 
     print(paste(Sys.time(),"Preparation finished"))
 
-    ###Convert raw files into mzXML
-    cur_step <- cur_step + 1
-    setProgress(cur_step,message="Convert raw files to mzXML")
-    run_msconvert_raw_mzXML(settings_list$Raw_folder)
-    print(paste(Sys.time(),"Raw file conversion finished"))
-
-    ###Convert mzXML into usable RData files
-    setProgress(cur_step,message="Prepare mzXML files")
-    mzxml_to_list(path_to_mzXML,n_cores = n_cores)
-    print(paste(Sys.time(),"Preparation of mzXMLs finished"))
+    ###Convert raw files
+    if(MassSpec_mode == "Orbitrap")
+    {
+      #Convert into mzXML
+      cur_step <- cur_step + 1
+      setProgress(cur_step,message="Convert raw files to mzXML")
+      run_msconvert_raw_mzXML(settings_list$Raw_folder)
+      print(paste(Sys.time(),"Raw file conversion finished"))
+      ###Convert mzXML into usable RData files
+      setProgress(cur_step,message="Prepare mzXML files")
+      mzxml_to_list(path_to_mzXML,n_cores = n_cores)
+      print(paste(Sys.time(),"Preparation of mzXMLs finished"))
+    }else
+    {
+      cur_step <- cur_step + 1
+      setProgress(cur_step,message="Extract MS1 spectra from raw files")
+      convert_rawTIMS(path_to_raw=settings_list$Raw_folder)
+      print(paste(Sys.time(),"Extraction finished"))
+    }
 
     ###Align features
     cur_step <- cur_step + 1
@@ -324,7 +357,11 @@ run_all_processes <- function(settings_list)
                    feature_mass_deviation_collapse=settings_list$collapse_mz,
                    only_unmodified_peptides=only_unmodified,
                    align_unknown = align_unknown,
-                   sample_list = sample_list)
+                   sample_list = sample_list,
+                   MassSpec_mode = MassSpec_mode,
+                   IM_window = NA,
+                   min_IM_window = 0.002)
+
     print(paste(Sys.time(),"Feature alignmend finished"))
 
     ###Add isotope features if required
@@ -369,7 +406,10 @@ run_all_processes <- function(settings_list)
                         alignment_variability_score_cutoff=settings_list$Alignment_score_cut,
                         alignment_scores_cutoff=settings_list$Alignment_score_cut,
                         mono_iso_alignment_cutoff=settings_list$Alignment_score_cut,
-                        calc_protein_LFQ=calc_protein_LFQ)
+                        calc_protein_LFQ=calc_protein_LFQ,
+                        MassSpec_mode=MassSpec_mode,
+                        use_IM_data=use_IM_data,
+                        path_to_extracted_spectra=path_to_extracted_spectra)
 
     print(paste(Sys.time(),"Feature and protein quantification finished"))
 
@@ -504,6 +544,19 @@ server <- function(input, output,session){
 
 
   ###combine all settings information into a list
+  observeEvent(input$massspecmode, {
+    if(input$massspecmode == "1")#Orbitrap
+    {
+      updateSliderInput(session, "min_mz_window", min = 0, max = 0.01, value = 0.001,step=0.0005)
+    }else
+    {
+      updateSliderInput(session, "min_mz_window", min = 0, max = 0.01, value = 0.005,step=0.0005)
+    }
+
+  })
+
+
+
 
   ###buttons
   observeEvent(input$run_all, {
@@ -523,7 +576,8 @@ server <- function(input, output,session){
                           Quant_pVal_cut = input$Quant_pVal_cut,
                           n_cores = input$n_cores,
                           kde_resolution = input$kde_resolution,
-                          num_peaks_store = input$num_peaks_store)
+                          num_peaks_store = input$num_peaks_store,
+                          MassSpec_settings = input$massspecmode)
     run_all_processes(settings_list)
 
   })

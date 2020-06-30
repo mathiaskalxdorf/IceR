@@ -6,7 +6,7 @@
 \usage{
 requantify_features(
   path_to_features,
-  path_to_mzXML,
+  path_to_mzXML = NA,
   path_to_MaxQ_output,
   feature_table_file_name = "Features_aligned_merged_IceR_analysis.txt",
   output_file_names_add = "IceR_analysis",
@@ -17,18 +17,21 @@ requantify_features(
   n_cores = 2,
   kde_resolution = 50,
   num_peaks_store = 5,
-  plot_2D_peak_detection = F,
+  plot_peak_detection = F,
   alignment_variability_score_cutoff = 0.05,
   alignment_scores_cutoff = 0.05,
   mono_iso_alignment_cutoff = 0.05,
   calc_peptide_LFQ = F,
-  calc_protein_LFQ = T
+  calc_protein_LFQ = T,
+  MassSpec_mode = c("Orbitrap", "TIMSToF"),
+  use_IM_data = T,
+  path_to_extracted_spectra = NA
 )
 }
 \arguments{
 \item{path_to_features}{Path to folder where results of align_features() are stored}
 
-\item{path_to_mzXML}{Path to folder containing mzXML files of samples}
+\item{path_to_mzXML}{Path to folder containing mzXML files of samples in case of Orbitrap data.}
 
 \item{path_to_MaxQ_output}{Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)}
 
@@ -50,7 +53,7 @@ requantify_features(
 
 \item{num_peaks_store}{Numeric value specifying number of 2D peaks to be stored during peak detection. By default set to 5.}
 
-\item{plot_2D_peak_detection}{Boolean value indicating if for every feature quantification the determined kernel density estimations and detected peaks should be visualized and stored. By default set to F.}
+\item{plot_peak_detection}{Boolean value indicating if for every feature quantification the determined kernel density estimations and detected peaks should be visualized and stored. By default set to F.}
 
 \item{alignment_variability_score_cutoff}{Numeric value specifying significance cutoff to distinguish which features show high RT- or m/z-variability of selected peaks between samples. By default set to 0.05. All features showing significant general variability (variability score < alignment_variability_score_cutoff) are excluded.}
 
@@ -61,6 +64,12 @@ requantify_features(
 \item{calc_peptide_LFQ}{Boolean value specifying if multiply peptide quantification data for same peptide sequence (multiply charge states, isotope-states) should be aggregated using the MaxLFQ algorithm. By default set to F.}
 
 \item{calc_protein_LFQ}{Boolean value specifying if protein quantification should be additionally performed by peptide quantification aggregation using the MaxLFQ algorithm. By default set to T.}
+
+\item{MassSpec_mode}{String being either "Orbitrap" or "TIMSToF" specifying by which type of Mass Spectrometer the data was generated. By default it expects Thermo Orbitrap data.}
+
+\item{use_IM_data}{Boolean value indicating if ion mobility information should be used during feature quantification in case of TIMS-ToF data. By default set to T.}
+
+\item{path_to_extracted_spectra}{Path to folder containing extracted spectra files of samples in case of TIMS-ToF data.}
 
 \item{path_to_output}{Path to folder where IceR results should be stored}
 }
