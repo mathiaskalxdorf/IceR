@@ -27,7 +27,9 @@ library(IceR)
 runIceR()
 ```
 ### Prerequisites
-The current version of IceR requires raw MS files (from Thermo Mass Spectrometers) to be preprocessed with MaxQuant (tested for Versions 1.5.1.2, 1.6.12 and 1.6.14, versions in between should work as well). Important note: Fasta file should be parsed correctly. In this case the column "Gene names" can be found in the proteinGroups.txt. Furthermore, raw files are required in the mzXML format. If msconvert from ProteoWizard is installed, IceR triggers conversion automatically. Otherwise, the user has to place the converted files in the folder "mzXML" within the folder containing the raw files. 
+The current version of IceR requires raw MS files (from Thermo Mass Spectrometers or from Bruker TIMS-ToF pro) to be preprocessed with MaxQuant (tested for Versions 1.5.1.2, 1.6.12 and 1.6.14, versions in between should work as well). Important note: Fasta file should be parsed correctly. In this case the column "Gene names" can be found in the proteinGroups.txt. Furthermore, raw Orbitrap files are required in the mzXML format and raw TIMS-ToF data has to be converted into a readable format. If msconvert from ProteoWizard is installed, IceR triggers conversion automatically. Otherwise, the user has to place the converted files in the folder "mzXML" in case of orbitrap data within the folder containing the raw files. Conversion of Bruker TIMS-ToF pro data is currently only possible if msConvert is installed. 
+
+Generally, the more ressources are available the faster the data analysis can be performed. Still, IceR can run reasonably well even on a normal PC/Laptop. However, in case of TIMS-ToF data a potent machine will be required due to the huge file sizes. Here it is recommended to at least allocate 128 gb of RAM to enable at maximum 3 samples to be processed. Furthermore, TIMS-ToF raw data currently has to be converted into a readable format which requires several hours per sample and at least 50 gb of space on the machines home drive. A future version of IceR will implement a faster conversion method.
 
 ### Example
 An example data set is stored [here](http://proteomecentral.proteomexchange.org/cgi/GetDataset). After running ...
@@ -43,12 +45,13 @@ runIceR()
 It allows setting up the IceR run. Among others, the following parameters can be modified:
 
  - Paths to raw files, MaxQuant results files and IceR output folder
+ - MassSpec Mode switching between Orbitrap and TIMS-ToF data (with or without using TIMS dimension)
  - Analysis name
  - Retention (RT) and m/z feature alignment windows
  - Kernel density estimation (KDE) resolution (increasing resolution increases computation workload but also increases resolution of peak detections) 
  - Number of peaks to be stored per quantification
  - Diagnostic and statistical significance cutoffs for quantifications
- - Number of threads to be used during IceR workflow (please check on your system specifications. Should not be higher than numbers of samples to be analyzed. Number of threads should be also adapted to available RAM)
+ - Number of threads to be used during IceR workflow (please check on your system specifications. Should not be higher than numbers of samples to be analyzed. Number of threads should be also adapted to available RAM. In case of TIMS-ToF data, a single 2h gradient acquisition run will require ~ 40 gb of RAM, hence, number of threads will be automatically limited in this case to 3 parallel threads)
 
 We can keep all settings at default but reduce number of threads to 4. After clicking on "Total process", the IceR workflow will start. A detailed description of the individual steps can be found in the original publication [IceR](https://pubmed.ncbi.nlm.nih.gov/)
 
