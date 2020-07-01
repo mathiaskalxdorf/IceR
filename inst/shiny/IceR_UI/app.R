@@ -212,7 +212,7 @@ run_all_processes <- function(settings_list)
   intensity_correction <- ifelse(any(settings_list$requant_settings == "4"),T,F)
   peak_detection <- ifelse(any(settings_list$requant_settings == "5"),T,F)
   add_PMPs <- ifelse(any(settings_list$requant_settings == "6"),T,F)
-  plot_2D_peak_detection <- ifelse(any(settings_list$requant_settings == "7"),T,F)
+  plot_peak_detection <- ifelse(any(settings_list$requant_settings == "7"),T,F)
   calc_protein_LFQ <- ifelse(any(settings_list$requant_settings == "8"),T,F)
 
 
@@ -278,7 +278,7 @@ run_all_processes <- function(settings_list)
                                   "RT_correction",
                                   "mz_correction",
                                   "add_PMPs",
-                                  "plot_2D_peak_detection",
+                                  "plot_peak_detection",
                                   "calc_protein_LFQ",
                                   "kde_resolution",
                                   "num_peaks_store",
@@ -304,7 +304,7 @@ run_all_processes <- function(settings_list)
                             RT_calibration,
                             mz_calibration,
                             add_PMPs,
-                            plot_2D_peak_detection,
+                            plot_peak_detection,
                             calc_protein_LFQ,
                             settings_list$kde_resolution,
                             settings_list$num_peaks_store,
@@ -312,7 +312,7 @@ run_all_processes <- function(settings_list)
                             use_IM_data)
 
     sample_list <- list.files(settings_list$Raw_folder)
-    sample_list <- sample_list[which(grepl("\\.raw",sample_list))]
+    sample_list <- sample_list[which(grepl("\\.raw|\\.d",sample_list))]
     sample_list_process <- sample_list[which(!grepl("Library|Lib",sample_list))]
     Raw_files <- data.frame(Raw_files=sample_list,Requantified=ifelse(sample_list %in% sample_list_process,T,F))
 
@@ -344,8 +344,8 @@ run_all_processes <- function(settings_list)
     cur_step <- cur_step + 1
     setProgress(cur_step,message="Perform feature alignment")
     sample_list <- list.files(settings_list$Raw_folder)
-    sample_list <- sample_list[which(grepl("\\.raw",sample_list))]#& !grepl("Library|Lib",sample_list)
-    sample_list <- gsub("\\.raw","",sample_list)
+    sample_list <- sample_list[which(grepl("\\.raw|\\.d",sample_list))]#& !grepl("Library|Lib",sample_list)
+    sample_list <- gsub("\\.raw|\\.d","",sample_list)
     align_features(path_to_MaxQ_output = path_to_MaxQ_output,
                    path_to_output=path_to_output,
                    output_file_names_add=settings_list$analysis_name,
@@ -402,7 +402,7 @@ run_all_processes <- function(settings_list)
                         Quant_pVal_cut = settings_list$Quant_pVal_cut,
                         kde_resolution = settings_list$kde_resolution,
                         num_peaks_store = settings_list$num_peaks_store,
-                        plot_2D_peak_detection=plot_2D_peak_detection,
+                        plot_peak_detection=plot_peak_detection,
                         alignment_variability_score_cutoff=settings_list$Alignment_score_cut,
                         alignment_scores_cutoff=settings_list$Alignment_score_cut,
                         mono_iso_alignment_cutoff=settings_list$Alignment_score_cut,
@@ -634,6 +634,14 @@ server <- function(input, output,session){
                                                                          "Add PMPs" = 6,
                                                                          "Plot 2D peak detection" = 7,
                                                                          "MaxLFQ quantification" = 8),selected = selection)
+      selection_mode <- ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == T,2,
+                               ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == F,3,
+                               1))
+
+      updateRadioButtons(session,inputId = "massspecmode",choices = list("Orbitrap" = 1,"TIMS-ToF Pro (use TIMS)" = 2,"TIMS-ToF Pro (don´t use TIMS)" = 3),selected = selection_mode)
+
+
+
     }
   })
 

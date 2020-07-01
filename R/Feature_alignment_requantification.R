@@ -475,6 +475,8 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
   MassSpec_mode <- MassSpec_mode[1]
 
+  if(is.na(sample_list))sample_list<-NULL
+
   if(output_file_names_add != "")output_file_names_add <- paste("_",output_file_names_add,sep="")
 
   setwd(path_to_output)
@@ -508,7 +510,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
         tempclasses[which(tempclasses == "logical")] <- "factor"
         tempclasses[32] = "factor"
         tempclasses[33] = "factor"
-
+        tempclasses[which(tempclasses == "character")] <- "factor"
       }else
       {
         tempclasses[3] = "numeric"
@@ -518,7 +520,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
         tempclasses[16] = "numeric"
         tempclasses[17] = "numeric"
         tempclasses[which(tempclasses == "logical")] <- "factor"
-
+        tempclasses[which(tempclasses == "character")] <- "factor"
       }
       allpeptides_save <- read.csv.ffdf(file = "allPeptides.txt",sep='\t',VERBOSE = F,colClasses=tempclasses,next.rows = 100000)##read in data in chunks of 100000 rows
 
@@ -4940,7 +4942,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     mzXMLfiles <- mzXMLfiles[which(grepl(".RData",mzXMLfiles))]
     samples <- mzXMLfiles
     samples <- substr(samples,1,regexpr("_all_ions.RData",samples)-1)
-    path_to_mzXML <- gsub("\\\\all_ion_lists","",path_to_extracted_spectra)
+    path_to_mzXML <- gsub("\\\\all_ion_lists|/all_ion_lists","",path_to_extracted_spectra)
   }
 
   ###keep samples which should be actually requantified
