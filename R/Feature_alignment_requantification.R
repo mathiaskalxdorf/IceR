@@ -785,14 +785,20 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     }
 
 
-
     QC_data <- list() ##here relevant qc data is stored and finally saved as RData which can be used for re-generating plots
 
     pdf(paste("Temporary_files\\QC_plots",output_file_names_add,".pdf",sep=""))
 
     RT_calibration <- T
-    IM_calibration <- T
     mz_calibration <- T
+
+    if(MassSpec_mode == "TIMSToF")
+    {
+      IM_calibration <- T
+    }else
+    {
+      IM_calibration <- F
+    }
 
     if(MassSpec_mode == "Orbitrap")QC_data[["MaxQ_calibrations"]] <- evidence[,c("Retention.time.calibration","Uncalibrated...Calibrated.m.z..Da.","delta_mz_to_mz_at_max_int")]
 
