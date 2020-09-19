@@ -3423,7 +3423,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
         mz_expected <- selected_features$m.z + selected_features[,paste("mz_calibration.",cur_sample,sep="")]
 
         RT_window <- c(RT_expected - (selected_features$RT_length/2),
-                       mz_expected + (selected_features$RT_length/2))
+                       RT_expected + (selected_features$RT_length/2))
 
         mz_window <- c(selected_features$m.z_range_min + selected_features[,paste("mz_calibration.",cur_sample,sep="")],
                        selected_features$m.z_range_max + selected_features[,paste("mz_calibration.",cur_sample,sep="")])
@@ -3443,9 +3443,6 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
                                            all_ion_data$m.z <= mz_window[2] &
                                            all_ion_data$RT >= RT_window[1] &
                                            all_ion_data$RT <= RT_window[2]),]
-
-          ion_data <- all_ion_data[which(all_ion_data$m.z >= mz_window[1]
-          ),]
           ion_data$isotope=0
 
           ##add isotope ions if wanted
@@ -4936,10 +4933,10 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   if(MassSpec_mode == "Orbitrap")
   {
     ###check for which samples mzXML files are available
-    mzXMLfiles <- list.files(path_to_mzXML)
-    mzXMLfiles <- mzXMLfiles[which(grepl(".mzXML",mzXMLfiles))]
+    mzXMLfiles <- list.files(paste(path_to_mzXML,"\\all_ion_lists",sep=""))
+    mzXMLfiles <- mzXMLfiles[which(grepl(".RData",mzXMLfiles))]
     samples <- mzXMLfiles
-    samples <- substr(samples,1,regexpr(".mzXML",samples)-1)
+    samples <- substr(samples,1,regexpr("_all_ions.RData",samples)-1)
   }
   if(MassSpec_mode == "TIMSToF")
   {
