@@ -39,6 +39,7 @@ Imports:
     seqinr,
     shiny,
     shinyFiles,
+    shinyjs,
     stringr,
     tibble,
     tidyr
