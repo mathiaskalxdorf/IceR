@@ -2,9 +2,12 @@ suppressMessages(library(IceR))
 suppressMessages(library(openxlsx))
 suppressMessages(library(shiny))
 suppressMessages(library(shinyFiles))
+suppressMessages(library(shinyjs))
 
 #panel for settings and run app
 run_panel <- fluidPage(
+
+  shinyjs::useShinyjs(),
 
   fluidRow(
 
@@ -64,6 +67,7 @@ run_panel <- fluidPage(
                               choices = list("Align unknown" = 1,
                                              "Only unmodified" = 2),
                               selected = 0),
+
            h5("Feature collapse m/z"),
            sliderInput("Collapse_mz", "",
                        min = 0, max = 0.01, value = 0.002,step=0.0005)
@@ -424,6 +428,9 @@ run_all_processes <- function(settings_list)
 
 #Server
 server <- function(input, output,session){
+
+  shinyjs::disable("alignment_settings")
+  shinyjs::disable("requant_settings")
 
   ###select file paths
   global_MaxQ_output_folder <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\MaxQ_Output")#getwd())

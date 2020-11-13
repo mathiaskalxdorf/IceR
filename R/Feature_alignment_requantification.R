@@ -2371,7 +2371,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
           if(length(unique(trainset[,"Uncalibrated...Calibrated.m.z..Da."]))>5)
           {
-            model <- randomForest(trainset[,c("Retention.time","m.z","Charge","Resolution")],trainset[,"Uncalibrated...Calibrated.m.z..Da."] , importance = TRUE,ntree = 100, mtry = 4,do.trace=F,nodesize = 100)
+            model <- randomForest(trainset[,c("Retention.time","m.z","Charge","Resolution")],trainset[,"Uncalibrated...Calibrated.m.z..Da."] , importance = TRUE,ntree = 500, mtry = 4,do.trace=F,nodesize = 100)
             evalset$predicted <- stats::predict(model, evalset, type = "response")
             trainset$predicted <- stats::predict(model, trainset, type = "response")
             models[[s]] <- model
@@ -5037,7 +5037,12 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     smoothScatter(RT,x,ylab="Mean intensity, log2",main=paste(colnames(decoy_mean_intensity)[c],"Decoy feature intensity"),xlab="RT [min]")
 
     ##try to fit an average generalised additive model to determine a RT dependent mean intensity and sd of intensity
-    gam <- gam(x ~ s(RT), method = "REML")
+    ##if not enough data points available, use the average gam
+    gam <- tryCatch({gam(x ~ s(RT), method = "REML")}, error = function(error_condition) {
+      RT <- rep(as.numeric(features_select$RT),ncol(decoy_mean_intensity))
+      x <- as.numeric(as.matrix(decoy_mean_intensity))
+      gam(x ~ s(RT), method = "REML")
+    })
     x_pred <- seq(min(features_select$RT,na.rm=T), max(features_select$RT,na.rm=T), length.out = nrow(features_select))
     y_pred <- predict(gam, data.frame(RT = x_pred))
     lines(x_pred,y_pred,col="red")

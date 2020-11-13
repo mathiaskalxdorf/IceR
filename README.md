@@ -15,7 +15,7 @@ The following installations are required:
  - Optional: [ProteoWizard](http://proteowizard.sourceforge.net/download.html)
  - Optional: [RStudio](https://rstudio.com/products/rstudio/download/)
  
-During installation, please keep default settings.
+During installation, please keep default settings and follow respective instructions.
 
 Next, we install the IceR package from GitHub
 ```r
@@ -33,7 +33,10 @@ The current version of IceR requires raw MS files (from Thermo Mass Spectrometer
 Generally, the more ressources are available the faster the data analysis can be performed. Still, IceR can run reasonably well even on a normal PC/Laptop. However, in case of TIMS-ToF data a potent machine will be required due to the huge file sizes. Here it is recommended to at least allocate 128 gb of RAM to enable at maximum 3 samples to be processed in parallel. Furthermore, TIMS-ToF raw data currently has to be converted (automatically triggered by IceR, requires msConvert to be installed) into a readable format which requires several hours per sample and at least 50 gb of space on the machines home drive. A future version of IceR will implement a faster conversion method.
 
 ### Example
-An example data set is stored [here](http://proteomecentral.proteomexchange.org/cgi/GetDataset). After running ...
+An example data set is stored [here](https://drive.google.com/drive/folders/1te8awhyliY4vKCCxjUdwJNJD_YlYjHJf?usp=sharing).
+Please download the raw files and (to speed things up) the corresponding MaxQuant results. This example data set consists of 4 tool MS files representing 2 replicates of human lysate spiked with 3 % E. coli lysate and 2 replicates of human lysate spiked with 9 % E. coli lysate. This data was acquired on a Q-Exactive HF machine. Supplied MaxQuant results were generated using MaxQuant V1.5.1.2. Used search database from UniProt is supplied.
+
+After running ...
 ```r
 library(IceR)
 runIceR()
@@ -54,11 +57,15 @@ It allows setting up the IceR run. Among others, the following parameters can be
  - Diagnostic and statistical significance cutoffs for quantifications
  - Number of threads to be used during IceR workflow (please check on your system specifications. Should not be higher than numbers of samples to be analyzed. Number of threads should be also adapted to available RAM. In case of TIMS-ToF data, a single 2h gradient acquisition run will require ~ 40 gb of RAM, hence, number of threads will be automatically limited in this case to 3 parallel threads)
 
-We can keep all settings at default but reduce number of threads to 4. After clicking on "Total process", the IceR workflow will start. A detailed description of the individual steps can be found in the original publication [IceR](https://pubmed.ncbi.nlm.nih.gov/)
+We can keep all settings at default (changes of some parameters are disabled at the moment) but reduce number of threads to 4. 
+
+Please specify the path to the downloaded raw files and MaxQuant results by clicking on the respective "Choose directory" buttons. Similarly, please specify a folder where IceR results should be stored.
+
+After clicking on "Total process", the IceR workflow will start. A detailed description of the individual steps can be found in the original publication [IceR](https://pubmed.ncbi.nlm.nih.gov/)
 
 A recent computational system should be able to complete the IceR workflow for the example data set within 2 - 3 hours.
 
-Afterwards, some quality control plots for the alignment and quantification can be visualized by clicking on the tap "QC" and subsequently on the respective button:
+When IceR finished, some quality control plots for the alignment and quantification can be visualized by clicking on the tap "QC" and subsequently on the respective button:
 
 <p align="center"> 
 <img src="images/IceR_gui_QC_alignment.jpg" style="width: 50%; height: 50%"/>
