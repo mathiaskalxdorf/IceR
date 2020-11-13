@@ -65,7 +65,7 @@ We can keep all settings at default (changes of some parameters are disabled at 
 
 Please specify the path to the downloaded raw files and MaxQuant results by clicking on the respective "Choose directory" buttons. Similarly, please specify a folder where IceR results should be stored.
 
-After clicking on "Total process", the IceR workflow will start. A detailed description of the individual steps can be found in the original publication [IceR](https://pubmed.ncbi.nlm.nih.gov/)
+After clicking on "Total process", the IceR workflow will start. A detailed description of the individual steps can be found in the original publication [IceR](https://www.biorxiv.org/content/10.1101/2020.11.01.363101v1.full)
 
 A recent computational system should be able to complete the IceR workflow for the example data set within 2 - 3 hours.
 
@@ -92,7 +92,7 @@ Now we load IceR library.
 library(IceR)
 ```
 
-Next, we load IceR and MaxQ data using the respective functions supplyed by the ICeR package. A file-choose box will open to specify the location of the respective data. 
+Next, we load IceR and MaxQ data using the respective functions supplyed by the IceR package. A file-choose box will open to specify the location of the respective data. 
 
 ```{r}
 IceR <- load_Requant_data()
@@ -104,7 +104,7 @@ anno <- data.frame(Spike = c(3,3,9,9))
 IceR <- add_annotations(IceR,anno)
 MaxQ <- add_annotations(MaxQ,anno)
 ```
-Next, Perform median normalization of protein- and peptide-level data based on background proteome (human proteins).
+Next, perform median normalization of protein- and peptide-level data based on background proteome (human proteins).
 ```{r}
 IceR$Protein_level$Quant_data_norm <- normalize_data(IceR$Protein_level$Quant_data,method = "median",main = "IceR - Protein-level data",norm_on_subset = which(IceR$Protein_level$Meta_data$Organism == "Homo sapiens"))
 IceR$Peptide_level$Quant_data_norm <- normalize_data(IceR$Peptide_level$Quant_data,method = "median",main = "IceR - Peptide-level data",norm_on_subset = which(IceR$Peptide_level$Meta_data$Organism == "Homo sapiens"))
@@ -138,7 +138,7 @@ plot_accuracy(list(MaxQ=MaxQ,IceR=IceR),inset = c(0,0),Legendpos = "topright",co
 
 We see similar CVs in MaxQuant and IceR data, however, more data points are available especially on peptide level in case of IceR data.
 
-Finally, we perform differential expression (DE) analysis. Perform DE on protein-level in case of MaxQ data and on peptide-level (using PECA) in case of IceR data to make use of the highly increased amount of available data for IceR results.
+Finally, we perform differential expression (DE) analysis. Perform DE on protein-level in case of MaxQ data and on peptide-level (using PECA) in case of IceR data to make use of the highly increased amount of available data for IceR results. As IceR robustly infers protein abundances e.g. using the MaxLFQ algorithm, DE analyses could be of course also performed on protein-level.
 
 ```{r}
 DE_MaxQ <- LIMMA_analysis(MaxQ$Protein_level$Quant_data_norm,assignments = MaxQ$Annotations$Spike,contrast = "9_vs_3",abundance_trend_prior = F)
