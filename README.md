@@ -28,12 +28,17 @@ library(IceR)
 runIceR()
 ```
 ### Prerequisites
+IceR was yet only tested on Windows 10 but should work on other OS as well. 
+
 The current version of IceR requires raw MS files (from Thermo Mass Spectrometers or from Bruker TIMS-ToF pro) to be preprocessed with MaxQuant (tested for Versions 1.5.1.2, 1.6.12 and 1.6.14, versions in between should work as well). Important note: Fasta file should be parsed correctly. In this case the column "Gene names" can be found in the proteinGroups.txt. Furthermore, raw Orbitrap files are required in the mzXML format and raw TIMS-ToF data has to be converted into a readable format. If msconvert from ProteoWizard is installed, IceR triggers conversion automatically. Otherwise, the user has to place the converted files in the folder "mzXML" in case of orbitrap data within the folder containing the raw files. Conversion of Bruker TIMS-ToF pro data is currently only possible if msConvert is installed. 
 
 Generally, the more ressources are available the faster the data analysis can be performed. Still, IceR can run reasonably well even on a normal PC/Laptop. However, in case of TIMS-ToF data a potent machine will be required due to the huge file sizes. Here it is recommended to at least allocate 128 gb of RAM to enable at maximum 3 samples to be processed in parallel. Furthermore, TIMS-ToF raw data currently has to be converted (automatically triggered by IceR, requires msConvert to be installed) into a readable format which requires several hours per sample and at least 50 gb of space on the machines home drive. A future version of IceR will implement a faster conversion method.
 
 ### Example
-An example data set is stored [here](https://drive.google.com/drive/folders/1te8awhyliY4vKCCxjUdwJNJD_YlYjHJf?usp=sharing).
+For this example, we will require [ProteoWizard](http://proteowizard.sourceforge.net/download.html) to be installed as raw files will have to be converted.
+
+The example data set is stored [here](https://drive.google.com/drive/folders/1te8awhyliY4vKCCxjUdwJNJD_YlYjHJf?usp=sharing).
+
 Please download the raw files and (to speed things up) the corresponding MaxQuant results. This example data set consists of 4 tool MS files representing 2 replicates of human lysate spiked with 3 % E. coli lysate and 2 replicates of human lysate spiked with 9 % E. coli lysate. This data was acquired on a Q-Exactive HF machine. Supplied MaxQuant results were generated using MaxQuant V1.5.1.2. Used search database from UniProt is supplied.
 
 After running ...
