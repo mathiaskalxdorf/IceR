@@ -141,7 +141,7 @@ We see similar CVs in MaxQuant and IceR data, however, more data points are avai
 Finally, we perform differential expression (DE) analysis. Perform DE on protein-level in case of MaxQ data and on peptide-level (using PECA) in case of IceR data to make use of the highly increased amount of available data for IceR results. As IceR robustly infers protein abundances e.g. using the MaxLFQ algorithm, DE analyses could be of course also performed on protein-level.
 
 ```{r}
-DE_MaxQ <- LIMMA_analysis(MaxQ$Protein_level$Quant_data_norm,assignments = MaxQ$Annotations$Spike,contrast = "9_vs_3",abundance_trend_prior = F)
+DE_MaxQ <- LIMMA_analysis(MaxQ$Protein_level$Quant_data_norm,assignments = MaxQ$Annotations$Spike,contrast = "9_vs_3")
 DE_IceR <- PECA_analysis(IceR$Peptide_level$Quant_data_norm,ids = IceR$Peptide_level$Meta_data$Gene_name,anno = IceR$Annotations$Spike,group1_name = "9",group2_name = "3")
 ```
 
