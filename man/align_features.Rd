@@ -16,11 +16,14 @@ align_features(
   min_num_ions_collapse = 10,
   feature_mass_deviation_collapse = 0.002,
   only_unmodified_peptides = F,
-  sample_list = NULL,
+  sample_list = NA,
   remove_contaminants = T,
   MassSpec_mode = c("Orbitrap", "TIMSToF"),
   IM_window = NA,
-  min_IM_window = 0.002
+  min_IM_window = 0.002,
+  multiplicity = c(1, 2, 3),
+  SILAC_settings = list(light = c(""), medium = c("Lys4", "Arg6"), heavy = c("Lys8",
+    "Arg10"))
 )
 }
 \arguments{
@@ -55,6 +58,10 @@ align_features(
 \item{IM_window}{Numeric value indicating maximal ion mobility (inverse K0) deviation around a center. By default set to NA which indicates that the function determines automatically this parameter based on sd of ion mobility of identified peptides between samples.}
 
 \item{min_IM_window}{Numberic value indicating how large the automatically determined ion mobility-window (inverse K0) should be. By default set to 0.002. Only required if ion mobility alignment window should be automatically determined. If set to NA, no minimal window size will be required.}
+
+\item{multiplicity}{Numeric value between 1 - 3 indicating if multiple channels are mixed on MS1-level. Label-free corresponds to 1 and SILAC to 2 (light and heavy) or 3 (light, medium, heavy)}
+
+\item{SILAC_settings}{List of 3 string vectors named light, medium and heavy. Each string vector should indicate which heavy isotope of Lys and/or Arg was used for respective channel. String vectors can contain Lys2, Lys4, Lys6, Lys8, Arg6 and Arg10.}
 }
 \value{
 Outputs are stored in the sub-directory Temporary_files within specified output folder. MaxQuant allpeptides.txt and evidence.txt are converted to RData files. QC plots of estimated alignment windows as well as of random forest modesl and generalized additive models are stored in a QC_plots.pdf. Relevant QC data is stored in Feature_alignment_QC_data.RData. Aligned IceR features are stored in Features_aligned_merged.txt

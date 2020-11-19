@@ -461,9 +461,11 @@ convert_rawTIMS <- function(path_to_raw=NULL)
 #' @param MassSpec_mode String being either "Orbitrap" or "TIMSToF" specifying by which type of Mass Spectrometer the data was generated. By default it expects Thermo Orbitrap data.
 #' @param IM_window Numeric value indicating maximal ion mobility (inverse K0) deviation around a center. By default set to NA which indicates that the function determines automatically this parameter based on sd of ion mobility of identified peptides between samples.
 #' @param min_IM_window Numberic value indicating how large the automatically determined ion mobility-window (inverse K0) should be. By default set to 0.002. Only required if ion mobility alignment window should be automatically determined. If set to NA, no minimal window size will be required.
+#' @param multiplicity Numeric value between 1 - 3 indicating if multiple channels are mixed on MS1-level. Label-free corresponds to 1 and SILAC to 2 (light and heavy) or 3 (light, medium, heavy)
+#' @param SILAC_settings List of 3 string vectors named light, medium and heavy. Each string vector should indicate which heavy isotope of Lys and/or Arg was used for respective channel. String vectors can contain Lys2, Lys4, Lys6, Lys8, Arg6 and Arg10.
 #' @details Performs the first steps of the IceR workflow: 1) Alignment window determination if not specified. 2) Alignment of MaxQuant features into IceR features. 3) Transfer of sequence information between MaxQuant features aligned into IceR features. 4) Extraction, modelling and prediction of RT- and m/z-correction factor per IceR feature and sample.
 #' @return Outputs are stored in the sub-directory Temporary_files within specified output folder. MaxQuant allpeptides.txt and evidence.txt are converted to RData files. QC plots of estimated alignment windows as well as of random forest modesl and generalized additive models are stored in a QC_plots.pdf. Relevant QC data is stored in Feature_alignment_QC_data.RData. Aligned IceR features are stored in Features_aligned_merged.txt
-align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,output_file_names_add="IceR_analysis",mz_window=NA,min_mz_window = 0.001,RT_window=NA,min_RT_window=1,min_num_ions_collapse=10,feature_mass_deviation_collapse=0.002,only_unmodified_peptides=F,sample_list=NULL,remove_contaminants=T,MassSpec_mode=c("Orbitrap","TIMSToF"),IM_window=NA,min_IM_window=0.002)
+align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,output_file_names_add="IceR_analysis",mz_window=NA,min_mz_window = 0.001,RT_window=NA,min_RT_window=1,min_num_ions_collapse=10,feature_mass_deviation_collapse=0.002,only_unmodified_peptides=F,sample_list=NA,remove_contaminants=T,MassSpec_mode=c("Orbitrap","TIMSToF"),IM_window=NA,min_IM_window=0.002,multiplicity=c(1,2,3),SILAC_settings=list(light=c(""),medium=c("Lys4","Arg6"),heavy=c("Lys8","Arg10")))
 {
   options(warn=-1)
   suppressWarnings(suppressMessages(library(data.table,quietly = T)))
@@ -473,6 +475,40 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
   suppressWarnings(suppressMessages(library(ff,quietly = T)))
   use_mz_at_max_int_for_correction=F
 
+  #check if multiplicity is 2 or 3 (e.g. SILAC samples)
+  multiplicity <- multiplicity[1] #take first definition if a vector
+  #if multiplicity is two, specification of light and heavy will be used
+  #if multiplicity is three, specifications of light, medium and heavy will be used
+  #SILAC_settings is a list of light, medium and heavy and each is a character vector
+  #this character vector should contain one or multiple of the following names: Lys4, Lys8, Arg6, Arg10 indicating which heavy isotope was used per channel
+  #can be also combinations like Lys4 and Arg6 for medium channel --> medium=c("Lys4","Arg6")
+  #convert isotope AA labels into expected mass shifts
+  if(multiplicity > 1)
+  {
+    if(multiplicity == 2)SILAC_settings$medium <- NULL #exclude medium channel in case of only 2 channels
+    require_lys <- F
+    require_arg <- F
+    for(i in 1:length(SILAC_settings)) ##convert label names into expected mass shifts
+    {
+      current_mass_shift_Lys <- 0
+      current_mass_shift_Arg <- 0
+
+      if(any(SILAC_settings[[i]] == "Lys2"))current_mass_shift_Lys <- current_mass_shift_Lys + 1.994070
+      if(any(SILAC_settings[[i]] == "Lys4"))current_mass_shift_Lys <- current_mass_shift_Lys + 4.025108
+      if(any(SILAC_settings[[i]] == "Lys6"))current_mass_shift_Lys <- current_mass_shift_Lys + 6.020130
+      if(any(SILAC_settings[[i]] == "Lys8"))current_mass_shift_Lys <- current_mass_shift_Lys + 8.014200
+      if(any(SILAC_settings[[i]] == "Arg6"))current_mass_shift_Arg <- current_mass_shift_Arg + 6.020130
+      if(any(SILAC_settings[[i]] == "Arg10"))current_mass_shift_Arg <- current_mass_shift_Arg + 10.00827
+      SILAC_settings[[i]] <- list(labels = SILAC_settings[[i]],
+                                  mass_shift_Lys = current_mass_shift_Lys,
+                                  mass_shift_Arg = current_mass_shift_Arg)
+      if(current_mass_shift_Lys != 0)require_lys <- T
+      if(current_mass_shift_Arg != 0)require_arg <- T
+
+    }
+  }
+
+  #Mass spec Mode can only be Orbitrap or TIMSToF
   MassSpec_mode <- MassSpec_mode[1]
 
   if(is.na(sample_list))sample_list<-NULL
@@ -494,7 +530,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
       if(is.null(sample_list))
       {
-        sample_list <- sort(unique(evidence$Raw.file))
+        sample_list <- sort(unique(allpeptides$Raw.file))
       }
 
     }else
@@ -506,26 +542,40 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       tempclasses = sapply(temp, class)
       if(MassSpec_mode == "Orbitrap")
       {
-        tempclasses[29] = "numeric"
-        tempclasses[which(tempclasses == "logical")] <- "factor"
-        tempclasses[32] = "factor"
-        tempclasses[33] = "factor"
-        tempclasses[which(tempclasses == "character")] <- "factor"
+        if(multiplicity == 1)
+        {
+          tempclasses["Intensity"] = "numeric"
+          tempclasses[which(tempclasses == "logical" | tempclasses == "character")] <- "factor"
+        }else
+        {
+          tempclasses["Intensity"] = "numeric"
+          tempclasses["Intensity.L"] = "numeric"
+          if(multiplicity == 3)tempclasses["Intensity.M"] = "numeric"
+          tempclasses["Intensity.H"] = "numeric"
+          tempclasses["Score"] = "numeric"
+          tempclasses["Retention.Length..FWHM."] = "numeric"
+          tempclasses[which(tempclasses == "logical" | tempclasses == "character")] <- "factor"
+        }
+
       }else
       {
-        tempclasses[3] = "numeric"
-        tempclasses[4] = "numeric"
-        tempclasses[11] = "numeric"
-        tempclasses[12] = "numeric"
-        tempclasses[16] = "numeric"
-        tempclasses[17] = "numeric"
-        tempclasses[which(tempclasses == "logical")] <- "factor"
-        tempclasses[which(tempclasses == "character")] <- "factor"
+        if(multiplicity == 1)
+        {
+          tempclasses["m.z"] = "numeric"
+          tempclasses["Mass"] = "numeric"
+          tempclasses["Retention.time" ] = "numeric"
+          tempclasses["Retention.length"] = "numeric"
+          tempclasses["Ion.mobility.index"] = "numeric"
+          tempclasses["Ion.mobility.index.length"] = "numeric"
+          tempclasses[which(tempclasses == "logical" | tempclasses == "character")] <- "factor"
+        }
       }
       allpeptides_save <- read.csv.ffdf(file = "allPeptides.txt",sep='\t',VERBOSE = F,colClasses=tempclasses,next.rows = 100000)##read in data in chunks of 100000 rows
 
       allpeptides <- as.data.frame(allpeptides_save)
       allpeptides <- allpeptides[order(allpeptides$Mass),]
+
+      if(multiplicity > 1)allpeptides <- allpeptides[which(allpeptides$Type != "ISO"),] ###remove ISO features as they are not adding anything at the moment
 
       #allpeptidessave <- allpeptides
       ###free some memory
@@ -617,24 +667,120 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
       }
 
+      #if in SILAC mode, treat each channel as individual sample
+      if(multiplicity > 1)
+      {
+        temp_allpeptides <- as.data.frame(matrix(ncol=ncol(allpeptides)+4,nrow=0))
+        colnames(temp_allpeptides) <- c(colnames(allpeptides),"m.z_SILAC","m.z_SILAC_uncalibrated","Lys_count","Arg_count")
+
+        #change intensities set to 0 to NA
+        allpeptides$Intensity.L[allpeptides$Intensity.L == 0] <- NA
+        allpeptides$Intensity.M[allpeptides$Intensity.M == 0] <- NA
+        allpeptides$Intensity.H[allpeptides$Intensity.H == 0] <- NA
+
+        for(s in unique(allpeptides$Raw.file))
+        {
+          for(label in names(SILAC_settings))
+          {
+            if(label == "light")sel <- which(allpeptides$Raw.file == s & !is.na(allpeptides$Intensity.L))
+            if(label == "medium")sel <- which(allpeptides$Raw.file == s & !is.na(allpeptides$Intensity.M))
+            if(label == "heavy")sel <- which(allpeptides$Raw.file == s & !is.na(allpeptides$Intensity.H))
+
+            #set intensity column to observed intensity in respective channel
+            temp <- allpeptides[sel,]
+            if(label == "light")temp$Intensity <- temp$Intensity.L
+            if(label == "medium")temp$Intensity <- temp$Intensity.M
+            if(label == "heavy")temp$Intensity <- temp$Intensity.H
+
+            #set observed m/z at max intensity
+            if(label == "light")temp$Max.intensity.m.z.0 <- temp$Max.intensity.m.z.0
+            if(label == "medium")temp$Max.intensity.m.z.0 <- temp$Max.intensity.m.z.1
+            if(label == "heavy")temp$Max.intensity.m.z.0 <- temp$Max.intensity.m.z.2
+
+            #get number of Lys and Arg per feature
+            count_AA_K <- ifelse(temp$Sequence != " ",str_count(temp$Sequence, "K"),NA)
+            count_AA_R <- ifelse(temp$Sequence != " ",str_count(temp$Sequence, "R"),NA)
+            if(any(colnames(temp) == "Lys.Count"))
+            {
+              temp$Lys_count <- ifelse(!is.na(temp$Lys.Count),temp$Lys.Count,count_AA_K)
+            }else
+            {
+              temp$Lys_count <- count_AA_K
+            }
+            if(any(colnames(temp) == "Arg.Count"))
+            {
+              temp$Arg_count <- ifelse(!is.na(temp$Arg.Count),temp$Arg.Count,count_AA_R)
+            }else
+            {
+              temp$Arg_count <- count_AA_R
+            }
+
+            #check if m/z shifts come from only Lys, only Arg or both
+            #if only coming from Lys then only keep features for which Lys count is known
+            #if only coming from Arg then only keep features for which Arg count is known
+            #in case of both, require Lys and Arg count to be known
+            #further filter for features with at least one of each required AA otherwise L, M and H channels can not be distinguished
+            if(require_lys == T & require_arg == T)
+            {
+              temp <- temp[which(!is.na(temp$Lys_count) & temp$Lys_count > 0 & !is.na(temp$Arg_count) & temp$Arg_count > 0),]
+            }else if(require_lys == T)
+            {
+              temp <- temp[which(!is.na(temp$Lys_count) & temp$Lys_count > 0),]
+            }else if(require_arg == T)
+            {
+              temp <- temp[which(!is.na(temp$Arg_count) & temp$Arg_count > 0),]
+            }
+            temp$Lys_count[is.na(temp$Lys_count)] <- 0
+            temp$Arg_count[is.na(temp$Arg_count)] <- 0
+
+            #adjust m/z to m/z including expected mass shift
+            temp$m.z_SILAC <- temp$m.z + ((SILAC_settings[[label]]$mass_shift_Lys*temp$Lys_count)/temp$Charge) + ((SILAC_settings[[label]]$mass_shift_Arg*temp$Arg_count)/temp$Charge)
+            temp$m.z_SILAC_uncalibrated <- temp$Uncalibrated.m.z + + ((SILAC_settings[[label]]$mass_shift_Lys*temp$Lys_count)/temp$Charge) + ((SILAC_settings[[label]]$mass_shift_Arg*temp$Arg_count)/temp$Charge)
+
+            #adjust raw file name
+            temp$Raw.file <- paste(s,"_Channel_",label,sep="")
+
+            temp_allpeptides <- rbind(temp_allpeptides,temp)
+          }
+        }
+
+        allpeptides <- temp_allpeptides
+      }
+
       ###if no specific sample list is defined which should be used, use all raw files
       if(is.null(sample_list))
       {
-        sample_list <- sort(unique(evidence$Raw.file))
+        sample_list <- sort(unique(allpeptides$Raw.file))
       }
 
       ###clean allpeptides table to reduce required memory space
       if(MassSpec_mode == "Orbitrap")
       {
-        if(any(colnames(allpeptides) == "Resolution"))
+        if(multiplicity == 1)
         {
-          allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","Mass","Uncalibrated.m.z","Resolution","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity")]
-        }else
+          if(any(colnames(allpeptides) == "Resolution"))
+          {
+            allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","Mass","Uncalibrated.m.z","Resolution","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity")]
+          }else
+          {
+            allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","Mass","Uncalibrated.m.z","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity")]
+            allpeptides$Resolution <- 0
+            print("MS resolution seems to be missing in MaxQ outputs !!!")
+          }
+        }else if(multiplicity > 1)
         {
-          allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","Mass","Uncalibrated.m.z","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity")]
-          allpeptides$Resolution <- 0
-          print("MS resolution seems to be missing in MaxQ outputs !!!")
+          if(any(colnames(allpeptides) == "Resolution"))
+          {
+            allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","m.z_SILAC","Mass","Uncalibrated.m.z","m.z_SILAC_uncalibrated","Resolution","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity","Lys_count","Arg_count")]
+          }else
+          {
+            allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","m.z_SILAC","Mass","Uncalibrated.m.z","m.z_SILAC_uncalibrated","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity","Lys_count","Arg_count")]
+            allpeptides$Resolution <- 0
+            print("MS resolution seems to be missing in MaxQ outputs !!!")
+          }
+
         }
+
       }
       if(MassSpec_mode == "TIMSToF")
       {
@@ -648,27 +794,51 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
 
       ###add calibrated RT to all peptides
-      temp_evidence <- evidence[,c("Sequence","Raw.file","Charge","Modifications","Calibrated.retention.time")]
-      temp_evidence <- aggregate(temp_evidence$Calibrated.retention.time,list(Sequence=evidence$Sequence,Raw.file=evidence$Raw.file,Charge=evidence$Charge,Modifications=evidence$Modifications),FUN=mean,na.rm=T)
-      colnames(temp_evidence)[5] <- "Calibrated.retention.time"
-      temp <- left_join(allpeptides,temp_evidence,by=c("Sequence"="Sequence","Raw.file"="Raw.file","Charge"="Charge","Modifications"="Modifications"))
-
-      missing_RT_calibration_indices <- which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")
-      if(length(missing_RT_calibration_indices)>0)
+      if(multiplicity == 1)
       {
-        for(ind in missing_RT_calibration_indices)
+        temp_evidence <- evidence[,c("Sequence","Raw.file","Charge","Modifications","Calibrated.retention.time")]
+        temp_evidence <- aggregate(temp_evidence$Calibrated.retention.time,list(Sequence=evidence$Sequence,Raw.file=evidence$Raw.file,Charge=evidence$Charge,Modifications=evidence$Modifications),FUN=mean,na.rm=T)
+        colnames(temp_evidence)[5] <- "Calibrated.retention.time"
+        temp <- left_join(allpeptides,temp_evidence,by=c("Sequence"="Sequence","Raw.file"="Raw.file","Charge"="Charge","Modifications"="Modifications"))
+
+        missing_RT_calibration_indices <- which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")
+        if(length(missing_RT_calibration_indices)>0)
         {
-          sub <- temp[which(temp$Sequence == temp$Sequence[ind] & temp$Modifications == temp$Modifications[ind]),]
-          temp$Calibrated.retention.time[ind] <- median(sub$Calibrated.retention.time,na.rm=T)
+          for(ind in missing_RT_calibration_indices)
+          {
+            sub <- temp[which(temp$Sequence == temp$Sequence[ind] & temp$Modifications == temp$Modifications[ind]),]
+            temp$Calibrated.retention.time[ind] <- median(sub$Calibrated.retention.time,na.rm=T)
+          }
         }
+
+        ###if any peptide feature still doesn?t have a valid calibrated RT --> just use observed RT
+        temp$Calibrated.retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")] <- temp$Retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")]
+        allpeptides <- temp
+      }else if(multiplicity > 1)
+      {
+        temp_evidence <- evidence[,c("Sequence","Raw.file","Charge","Modifications","Calibrated.retention.time")]
+        temp_evidence <- aggregate(temp_evidence$Calibrated.retention.time,list(Sequence=evidence$Sequence,Raw.file=evidence$Raw.file,Charge=evidence$Charge,Modifications=evidence$Modifications),FUN=mean,na.rm=T)
+        colnames(temp_evidence)[5] <- "Calibrated.retention.time"
+        allpeptides$Raw.file_orig <- gsub("_Channel_light|_Channel_medium|_Channel_heavy","",allpeptides$Raw.file)
+        temp <- left_join(allpeptides,temp_evidence,by=c("Sequence"="Sequence","Raw.file_orig"="Raw.file","Charge"="Charge","Modifications"="Modifications"))
+
+        missing_RT_calibration_indices <- which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")
+        if(length(missing_RT_calibration_indices)>0)
+        {
+          for(ind in missing_RT_calibration_indices)
+          {
+            sub <- temp[which(temp$Sequence == temp$Sequence[ind] & temp$Modifications == temp$Modifications[ind]),]
+            temp$Calibrated.retention.time[ind] <- median(sub$Calibrated.retention.time,na.rm=T)
+          }
+        }
+
+        ###if any peptide feature still doesn?t have a valid calibrated RT --> just use observed RT
+        temp$Calibrated.retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")] <- temp$Retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")]
+        allpeptides <- temp
       }
 
-      ###if any peptide feature still doesn?t have a valid calibrated RT --> just use observed RT
-      temp$Calibrated.retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")] <- temp$Retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")]
-      allpeptides <- temp
-
-
-      if(MassSpec_mode == "Orbitrap") ###potentially not required anymore
+      #determine isotope corrected m/z
+      if(MassSpec_mode == "Orbitrap" & multiplicity == 1)
       {
         ###calculate deviations between samples
         add <- as.data.frame(matrix(nrow=nrow(allpeptides),ncol=3))
@@ -771,9 +941,6 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
         close(pb)
 
         evidence <- cbind(evidence,add)
-
-
-
       }
 
       ####
@@ -800,7 +967,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       IM_calibration <- F
     }
 
-    if(MassSpec_mode == "Orbitrap")QC_data[["MaxQ_calibrations"]] <- evidence[,c("Retention.time.calibration","Uncalibrated...Calibrated.m.z..Da.","delta_mz_to_mz_at_max_int")]
+    if(MassSpec_mode == "Orbitrap")QC_data[["MaxQ_calibrations"]] <- evidence[,c("Retention.time.calibration","Uncalibrated...Calibrated.m.z..Da.")]
 
     allpeptides <- allpeptides[order(allpeptides$m.z),]
     rownames(allpeptides) <- c(1:nrow(allpeptides))
@@ -854,6 +1021,12 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       windows$sd_m.z_uncalibrated <- as.numeric(windows$sd_m.z_uncalibrated)
       windows$mean_IM <- as.numeric(windows$mean_IM)
       windows$sd_IM <- as.numeric(windows$sd_IM)
+    }
+
+    #if multiplicity > 1 then only use light channel for the alignment parameter determination as M and H will have exact same m/z and RT
+    if(multiplicity > 1)
+    {
+      identified_ions <- identified_ions[!duplicated(identified_ions[,c("Sequence","Raw.file_orig","Charge","Modifications")]),]
     }
 
     ###remove outlier samples where RT of a peptide is very different from all other samples
@@ -1146,31 +1319,65 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
     if(MassSpec_mode == "Orbitrap")
     {
-      features <- as.data.frame(matrix(ncol=21,nrow=length(unique(paste(temp$Sequence,temp$Charge,temp$Modifications)))))
-      colnames(features) <- c("Feature_name","m.z","RT","Sequence","Protein","MSMS.Scan.Numbers","m.z_range_min","m.z_range_max","RT_range_min","RT_range_max","ion_indices","count_ion_indices","Mass","Charge","mean_Scores","num_matches","Modifications","RT_length","Observed_RT","Observed_mz","Observed_score")
+      if(multiplicity == 1)
+      {
+        features <- as.data.frame(matrix(ncol=21,nrow=length(unique(paste(temp$Sequence,temp$Charge,temp$Modifications)))))
+        colnames(features) <- c("Feature_name","m.z","RT","Sequence","Protein","MSMS.Scan.Numbers","m.z_range_min","m.z_range_max","RT_range_min","RT_range_max","ion_indices","count_ion_indices","Mass","Charge","mean_Scores","num_matches","Modifications","RT_length","Observed_RT","Observed_mz","Observed_score")
 
-      features <- as.data.table(features)
-      features$Feature_name <- as.character(features$Feature_name)
-      features$Mass <- as.numeric(features$Mass)
-      features$RT <- as.numeric(features$RT)
-      features$Sequence <- as.character(features$Sequence)
-      features$Protein <- as.character(features$Protein)
-      features$MSMS.Scan.Numbers <- as.character(features$MSMS.Scan.Numbers)
-      features$m.z_range_min <- as.numeric(features$m.z_range_min)
-      features$m.z_range_max <- as.numeric(features$m.z_range_max)
-      features$RT_range_min <- as.numeric(features$RT_range_min)
-      features$RT_range_max <- as.numeric(features$RT_range_max)
-      features$ion_indices <- as.character(features$ion_indices)
-      features$count_ion_indices <- as.numeric(features$count_ion_indices)
-      features$m.z <- as.numeric(features$m.z)
-      features$Charge <- as.numeric(features$Charge)
-      features$mean_Scores <- as.character(features$ion_indices)
-      features$num_matches <- as.character(features$num_matches)
-      features$Modifications <- as.character(features$Modifications)
-      features$RT_length <- as.numeric(features$RT_length)
-      features$Observed_RT <- as.character(features$Observed_RT)
-      features$Observed_mz <- as.character(features$Observed_mz)
-      features$Observed_score <- as.character(features$Observed_score)
+        features <- as.data.table(features)
+        features$Feature_name <- as.character(features$Feature_name)
+        features$Mass <- as.numeric(features$Mass)
+        features$RT <- as.numeric(features$RT)
+        features$Sequence <- as.character(features$Sequence)
+        features$Protein <- as.character(features$Protein)
+        features$MSMS.Scan.Numbers <- as.character(features$MSMS.Scan.Numbers)
+        features$m.z_range_min <- as.numeric(features$m.z_range_min)
+        features$m.z_range_max <- as.numeric(features$m.z_range_max)
+        features$RT_range_min <- as.numeric(features$RT_range_min)
+        features$RT_range_max <- as.numeric(features$RT_range_max)
+        features$ion_indices <- as.character(features$ion_indices)
+        features$count_ion_indices <- as.numeric(features$count_ion_indices)
+        features$m.z <- as.numeric(features$m.z)
+        features$Charge <- as.numeric(features$Charge)
+        features$mean_Scores <- as.character(features$ion_indices)
+        features$num_matches <- as.character(features$num_matches)
+        features$Modifications <- as.character(features$Modifications)
+        features$RT_length <- as.numeric(features$RT_length)
+        features$Observed_RT <- as.character(features$Observed_RT)
+        features$Observed_mz <- as.character(features$Observed_mz)
+        features$Observed_score <- as.character(features$Observed_score)
+      }else if(multiplicity > 1)
+      {
+        features <- as.data.frame(matrix(ncol=24,nrow=length(unique(paste(temp$Sequence,temp$Charge,temp$Modifications)))))
+        colnames(features) <- c("Feature_name","m.z","RT","Sequence","Protein","MSMS.Scan.Numbers","m.z_range_min","m.z_range_max","RT_range_min","RT_range_max","ion_indices","count_ion_indices","Mass","Charge","mean_Scores","num_matches","Modifications","RT_length","Observed_RT","Observed_mz","Observed_score","m.z._shift_light","m.z._shift_medium","m.z._shift_heavy")
+
+        features <- as.data.table(features)
+        features$Feature_name <- as.character(features$Feature_name)
+        features$Mass <- as.numeric(features$Mass)
+        features$RT <- as.numeric(features$RT)
+        features$Sequence <- as.character(features$Sequence)
+        features$Protein <- as.character(features$Protein)
+        features$MSMS.Scan.Numbers <- as.character(features$MSMS.Scan.Numbers)
+        features$m.z_range_min <- as.numeric(features$m.z_range_min)
+        features$m.z_range_max <- as.numeric(features$m.z_range_max)
+        features$RT_range_min <- as.numeric(features$RT_range_min)
+        features$RT_range_max <- as.numeric(features$RT_range_max)
+        features$ion_indices <- as.character(features$ion_indices)
+        features$count_ion_indices <- as.numeric(features$count_ion_indices)
+        features$m.z <- as.numeric(features$m.z)
+        features$Charge <- as.numeric(features$Charge)
+        features$mean_Scores <- as.character(features$ion_indices)
+        features$num_matches <- as.character(features$num_matches)
+        features$Modifications <- as.character(features$Modifications)
+        features$RT_length <- as.numeric(features$RT_length)
+        features$Observed_RT <- as.character(features$Observed_RT)
+        features$Observed_mz <- as.character(features$Observed_mz)
+        features$Observed_score <- as.character(features$Observed_score)
+        features$m.z._shift_light <- as.numeric(features$m.z._shift_light)
+        features$m.z._shift_medium <- as.numeric(features$m.z._shift_medium)
+        features$m.z._shift_heavy <- as.numeric(features$m.z._shift_heavy)
+      }
+
     }
     if(MassSpec_mode == "TIMSToF")
     {
@@ -1381,9 +1588,24 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
                   Observed_RT <- paste(temp_RT[match(sample_list,temp_RT$Raw.file),2],collapse=";") ###order all observed RT according to sample_list
 
-                  temp_mz <- aggregate(sub$isotope_corrected_mz_at_max_int,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
+                  if(multiplicity == 1) #use m.z corrected for isotope pattern
+                  {
+                    temp_mz <- aggregate(sub$isotope_corrected_mz_at_max_int,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
 
-                  Observed_mz <- paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
+                    Observed_mz <- paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
+                  }else if(multiplicity > 1)
+                  {
+                    temp_mz <- aggregate(sub$m.z_SILAC,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
+
+                    Observed_mz <- paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
+
+                    #calculate expected heavy isotope induced shifts
+                    lys_count <- median(sub$Lys_count,na.rm=T)
+                    arg_count <- median(sub$Arg_count,na.rm=T)
+                    isotope_shifts <- c(((SILAC_settings$light$mass_shift_Lys*lys_count) + (SILAC_settings$light$mass_shift_Arg*arg_count))/c,
+                                        ((SILAC_settings$medium$mass_shift_Lys*lys_count) + (SILAC_settings$medium$mass_shift_Arg*arg_count))/c,
+                                        ((SILAC_settings$heavy$mass_shift_Lys*lys_count) + (SILAC_settings$heavy$mass_shift_Arg*arg_count))/c)
+                  }
 
                   temp_score <- aggregate(sub$Score,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
 
@@ -1402,18 +1624,39 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
                                                                                                                                     Observed_mz,
                                                                                                                                     Observed_score
                   )))
-                  set(x = features,i = as.integer(count_features),j = as.integer(c(2,3,7,8,9,10,12,13,14,18)),value = as.list(c(
-                    as.numeric(median_m.z),
-                    as.numeric(median_RT),
-                    as.numeric(median_m.z+borders_m.z[1]),
-                    as.numeric(median_m.z+borders_m.z[2]),
-                    as.numeric(median_RT+borders_RT[1]),
-                    as.numeric(median_RT+borders_RT[2]),
-                    as.numeric(nrow(sub)),
-                    as.numeric(median_mass),
-                    as.numeric(Charge),
-                    RT_length
-                  )))
+                  if(multiplicity == 1)
+                  {
+                    set(x = features,i = as.integer(count_features),j = as.integer(c(2,3,7,8,9,10,12,13,14,18)),value = as.list(c(
+                      as.numeric(median_m.z),
+                      as.numeric(median_RT),
+                      as.numeric(median_m.z+borders_m.z[1]),
+                      as.numeric(median_m.z+borders_m.z[2]),
+                      as.numeric(median_RT+borders_RT[1]),
+                      as.numeric(median_RT+borders_RT[2]),
+                      as.numeric(nrow(sub)),
+                      as.numeric(median_mass),
+                      as.numeric(Charge),
+                      RT_length
+                    )))
+                  }else if(multiplicity > 1)
+                  {
+                    set(x = features,i = as.integer(count_features),j = as.integer(c(2,3,7,8,9,10,12,13,14,18,22:24)),value = as.list(c(
+                      as.numeric(median_m.z),
+                      as.numeric(median_RT),
+                      as.numeric(median_m.z+borders_m.z[1]),
+                      as.numeric(median_m.z+borders_m.z[2]),
+                      as.numeric(median_RT+borders_RT[1]),
+                      as.numeric(median_RT+borders_RT[2]),
+                      as.numeric(nrow(sub)),
+                      as.numeric(median_mass),
+                      as.numeric(Charge),
+                      RT_length,
+                      isotope_shifts[1],
+                      isotope_shifts[2],
+                      isotope_shifts[3]
+                    )))
+                  }
+
 
                   ###now mark matched features
                   set(temp_data,i = as.integer(rownames(sub)),j=1L,value=1)
@@ -1695,249 +1938,249 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     if(MassSpec_mode == "TIMSToF")save(temp_data,features,allpeptides,borders_m.z,borders_RT,borders_IM,windows,file=paste("Temporary_files\\features_aligned_step_1",output_file_names_add,".RData",sep=""))
     #####Perform alignment of undefined features
 
-    if(align_unknown == T)
-    {
-      ###2.) step - align remaining features
-
-      #load(paste("features_aligned_step_1",output_file_names_add,".RData",sep=""))
-
-      count_features <- nrow(features)
-
-      ###start by trying to find unique features over all samples defined by the pair Mass and RT
-      border_factor <- 4
-
-      ####use this matrix for faster subsetting
-      temp_data_m <- as.matrix(subset(allpeptides,select=c("m.z","Retention.time","Charge")))
-      temp_data_m <- cbind(temp_data_m,temp_data)
-      colnames(temp_data_m)[4] <- "Matched"
-      temp_data_m[which(is.na(temp_data_m[,4])),4] <- 0
-      #temp_data_m <- cbind(temp_data_m,as.matrix(subset(allpeptides,select=c("Retention.Length"))))
-
-      features_unknown <- as.data.frame(matrix(ncol=21,nrow=(nrow(temp_data)/min_num_ions_collapse)))
-      colnames(features_unknown) <- c("Feature_name","m.z","RT","Sequence","Protein","MSMS.Scan.Numbers","m.z_range_min","m.z_range_max","RT_range_min","RT_range_max","ion_indices","count_ion_indices","Mass","Charge","mean_Scores","num_matches","Modifications","RT_length","Observed_RT","Observed_mz","Observed_score")
-
-
-      features_unknown <- as.data.table(features_unknown)
-      features_unknown$Feature_name <- as.character(features_unknown$Feature_name)
-      features_unknown$Mass <- as.numeric(features_unknown$Mass)
-      features_unknown$RT <- as.numeric(features_unknown$RT)
-      features_unknown$Sequence <- as.character(features_unknown$Sequence)
-      features_unknown$Protein <- as.character(features_unknown$Protein)
-      features_unknown$MSMS.Scan.Numbers <- as.character(features_unknown$MSMS.Scan.Numbers)
-      features_unknown$m.z_range_min <- as.numeric(features_unknown$m.z_range_min)
-      features_unknown$m.z_range_max <- as.numeric(features_unknown$m.z_range_max)
-      features_unknown$RT_range_min <- as.numeric(features_unknown$RT_range_min)
-      features_unknown$RT_range_max <- as.numeric(features_unknown$RT_range_max)
-      features_unknown$ion_indices <- as.character(features_unknown$ion_indices)
-      features_unknown$count_ion_indices <- as.numeric(features_unknown$count_ion_indices)
-      features_unknown$m.z <- as.numeric(features_unknown$m.z)
-      features_unknown$Charge <- as.numeric(features_unknown$Charge)
-      features_unknown$mean_Scores <- as.character(features_unknown$ion_indices)
-      features_unknown$num_matches <- as.character(features_unknown$num_matches)
-      features_unknown$Modifications <- as.character(features_unknown$Modifications)
-      features_unknown$RT_length <- as.numeric(features_unknown$RT_length)
-      features_unknown$Observed_RT <- as.character(features_unknown$Observed_RT)
-      features_unknown$Observed_mz <- as.character(features_unknown$Observed_mz)
-      features_unknown$Observed_score <- as.character(features_unknown$Observed_score)
-
-      max <- nrow(temp_data_m)
-      pb <- winProgressBar(title = "Aligning unknown features",label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
-      start_time <- Sys.time()
-      updatecounter <- 0
-      time_require <- 0
-      start <- 1
-      end <- max-1
-
-      count_features_unknown <- 0
-
-      for(i in start:end) ###go through all features and try to match with others in the data set
-      {
-        if(temp_data_m[i,4] == 0)###check if already matched
-        {
-          ind <- i
-          while(T)
-          {
-            ind = ind + 1000
-            if(ind > nrow(temp_data_m))
-            {
-              ind <- nrow(temp_data_m)
-              break
-            }
-            if(temp_data_m[ind,1] > (temp_data_m[i,1]+(border_factor*borders_m.z[2])))
-            {
-              break
-            }
-          }
-
-          sub <- temp_data_m[i:ind,]
-          sub <- sub[which(sub[,4] == 0),]
-
-          ###determine which other features might fit to the current unmatched feature
-          ###here use a wide mass and RT range to get a first preselection for Mass and RT distribution estimation                                  )
-
-          matches_preselection <- which(sub[,1] >= (temp_data_m[i,1]+(border_factor*borders_m.z[1])) & sub[,1] <= (temp_data_m[i,1]+(border_factor*borders_m.z[2])) & sub[,2] >= (temp_data_m[i,2]+(border_factor*borders_RT[1])) & sub[,2] <= (temp_data_m[i,2]+(border_factor*borders_RT[2])) & as.numeric(sub[,3]) == temp_data_m[i,3])
-
-          #Sys.time()-start
-          if(length(matches_preselection) >= min_num_ions_collapse) ###at least n other features
-          {
-            ###now get estimate of true Mass and RT by using the median
-            median_m.z <- median(sub[matches_preselection,1],na.rm=T)
-            median_RT <- median(sub[matches_preselection,2],na.rm=T)
-
-            ###determine which features will be finally matched with the normal m/z and RT range
-            matches_temp <- which(as.numeric(sub[,1]) >= (median_m.z+borders_m.z[1]) & as.numeric(sub[,1]) <= (median_m.z+borders_m.z[2]) & as.numeric(sub[,2]) >= (median_RT+borders_RT[1]) & as.numeric(sub[,2]) <= (median_RT+borders_RT[2]) & as.numeric(sub[,3]) == temp_data_m[i,3])
-
-            matches <- as.numeric(rownames(sub)[matches_temp]) ###convert back to original data
-
-            if(length(matches) >= min_num_ions_collapse)
-            {
-              count_features <- count_features + 1
-              count_features_unknown <- count_features_unknown + 1
-              ###new feature - give a new name
-              name <- paste("Feature",count_features,sep="_")
-
-              sequences_relevant <- which(nchar(as.character(allpeptides[matches,"Sequence"])) > 1)
-              if(length(sequences_relevant) > 0)
-              {
-                sequence <- paste(unique(allpeptides[matches[sequences_relevant],"Sequence"]),collapse=";")
-              }else
-              {
-                sequence <- ""
-              }
-
-              proteins_relevant <- which(nchar(as.character(allpeptides[matches,"Proteins"])) > 1)
-              if(length(proteins_relevant) > 0)
-              {
-                protein <- paste(unique(allpeptides[matches[proteins_relevant],"Proteins"]),collapse=";")
-              }else
-              {
-                protein <- ""
-              }
-
-              msmsscansrelevant_relevant <- which(nchar(as.character(allpeptides[matches,"MSMS.Scan.Numbers"])) > 1)
-              if(length(msmsscansrelevant_relevant) > 0)
-              {
-                msmsscan <- paste(unique(paste(allpeptides[matches[msmsscansrelevant_relevant],"Raw.file"],"_msms_",allpeptides[matches[msmsscansrelevant_relevant],"MSMS.Scan.Numbers"],sep="")),collapse=";")
-              }else
-              {
-                msmsscan <- ""
-              }
-
-              median_mass <- median(allpeptides$Mass[matches],na.rm=T)
-              Charge <- temp_data_m[i,3]
-
-
-              if(sequence != "")
-              {
-                scores <- NULL
-                num_matches <- NULL
-                for(s in unique(unlist(str_split(sequence,";"))))
-                {
-                  scores <- append(scores,mean(allpeptides[matches,"Score"][which(allpeptides[matches,"Sequence"] == s)],na.rm=T))
-                  num_matches <- append(num_matches,length(which(allpeptides[matches,"Sequence"] == s)))
-                }
-
-                Modifications_relevant <- which(nchar(as.character(allpeptides[matches,"Modifications"])) > 1)
-                if(length(Modifications_relevant) > 0)
-                {
-                  Modifications <- paste(unique(allpeptides[matches[Modifications_relevant],"Modifications"]),collapse=";")
-                  Modifications <- gsub("Unmodified","",Modifications)
-
-                }else
-                {
-                  Modifications <- ""
-                }
-              }else
-              {
-                scores <- NA
-                num_matches <- NA
-                Modifications <- ""
-              }
-
-              RT_length <- median(allpeptides$Retention.Length[matches],na.rm=T)
-
-              temp_RT <- aggregate(allpeptides$Retention.time[matches],by=list(Raw.file=allpeptides$Raw.file[matches]),FUN=mean,na.rm=T)
-              Observed_RT <- paste(temp_RT[match(sample_list,temp_RT$Raw.file),2],collapse=";") ###order all observed RT according to sample_list
-
-              temp_mz <- aggregate(allpeptides$isotope_corrected_mz_at_max_int[matches],by=list(Raw.file=allpeptides$Raw.file[matches]),FUN=mean,na.rm=T)
-              Observed_mz <- paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
-
-              temp_score <- aggregate(allpeptides$Score[matches],by=list(Raw.file=allpeptides$Raw.file[matches]),FUN=mean,na.rm=T)
-              Observed_score <- paste(temp_score[match(sample_list,temp_score$Raw.file),2],collapse=";") ###order all observed scores according to sample_list
-
-
-              set(x = features_unknown,i = as.integer(count_features_unknown),j = as.integer(c(1,4,5,6,11,15,16,17,19,20,21)),value = as.list(c(name,
-                                                                                                                                                sequence,
-                                                                                                                                                protein,
-                                                                                                                                                msmsscan,
-                                                                                                                                                paste(matches,collapse = ","),
-                                                                                                                                                paste(scores,collapse=";"),
-                                                                                                                                                paste(num_matches,collapse=";"),
-                                                                                                                                                Modifications,
-                                                                                                                                                Observed_RT,
-                                                                                                                                                Observed_mz,
-                                                                                                                                                Observed_score
-              )))
-              set(x = features_unknown,i = as.integer(count_features_unknown),j = as.integer(c(2,3,7,8,9,10,12,13,14,18)),value = as.list(c(
-                as.numeric(median_m.z),
-                as.numeric(median_RT),
-                as.numeric(median_m.z+borders_m.z[1]),
-                as.numeric(median_m.z+borders_m.z[2]),
-                as.numeric(median_RT+borders_RT[1]),
-                as.numeric(median_RT+borders_RT[2]),
-                as.numeric(length(matches)),
-                as.numeric(median_mass),
-                as.numeric(Charge),
-                RT_length
-              )))
-
-
-              ###now mark matched features
-              # starttime <- Sys.time()
-              # temp_data_m[matches,4] <- 1
-              # print(Sys.time()-starttime)
-
-              set(temp_data_m,i=as.integer(matches),j=4L,value=1)
-
-            }
-
-
-          }
-        }
-
-        updatecounter <- updatecounter + 1
-        if(updatecounter >= 5000)
-        {
-          time_elapsed <- difftime(Sys.time(),start_time,units="secs")
-          time_require <- (time_elapsed/(i/max))*(1-(i/max))
-          td <- seconds_to_period(time_require)
-          time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
-
-          updatecounter <- 0
-          setWinProgressBar(pb, i, label=paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
-        }
-
-      }
-      close(pb)
-
-      features_unknown <- features_unknown[1:count_features_unknown,]
-
-      #write.table(features_unknown,paste("Temporary_files\\Features_aligned_unknown",output_file_names_add,".txt",sep=""),row.names = F)
-
-      ####Combine known and unknown features
-      features <- rbind(features,features_unknown)
-      rownames(features) <- c()
-
-      ###number of matched to number of unmatched ions
-      value <- length(which(temp_data_m$Matched == 1))/nrow(temp_data_m) * 100
-      barplot(value,main="Relative fraction of features which are matched",ylab="Fraction [%]")
-
-      QC_data[["Numbers_matched_features"]] <- value
-
-      ###Store all results
-
-      save(temp_data_m,features,count_features_unknown,file=paste("features_aligned_step_2",output_file_names_add,".RData",sep=""))
-    }
+    # if(align_unknown == T)
+    # {
+    #   ###2.) step - align remaining features
+    #
+    #   #load(paste("features_aligned_step_1",output_file_names_add,".RData",sep=""))
+    #
+    #   count_features <- nrow(features)
+    #
+    #   ###start by trying to find unique features over all samples defined by the pair Mass and RT
+    #   border_factor <- 4
+    #
+    #   ####use this matrix for faster subsetting
+    #   temp_data_m <- as.matrix(subset(allpeptides,select=c("m.z","Retention.time","Charge")))
+    #   temp_data_m <- cbind(temp_data_m,temp_data)
+    #   colnames(temp_data_m)[4] <- "Matched"
+    #   temp_data_m[which(is.na(temp_data_m[,4])),4] <- 0
+    #   #temp_data_m <- cbind(temp_data_m,as.matrix(subset(allpeptides,select=c("Retention.Length"))))
+    #
+    #   features_unknown <- as.data.frame(matrix(ncol=21,nrow=(nrow(temp_data)/min_num_ions_collapse)))
+    #   colnames(features_unknown) <- c("Feature_name","m.z","RT","Sequence","Protein","MSMS.Scan.Numbers","m.z_range_min","m.z_range_max","RT_range_min","RT_range_max","ion_indices","count_ion_indices","Mass","Charge","mean_Scores","num_matches","Modifications","RT_length","Observed_RT","Observed_mz","Observed_score")
+    #
+    #
+    #   features_unknown <- as.data.table(features_unknown)
+    #   features_unknown$Feature_name <- as.character(features_unknown$Feature_name)
+    #   features_unknown$Mass <- as.numeric(features_unknown$Mass)
+    #   features_unknown$RT <- as.numeric(features_unknown$RT)
+    #   features_unknown$Sequence <- as.character(features_unknown$Sequence)
+    #   features_unknown$Protein <- as.character(features_unknown$Protein)
+    #   features_unknown$MSMS.Scan.Numbers <- as.character(features_unknown$MSMS.Scan.Numbers)
+    #   features_unknown$m.z_range_min <- as.numeric(features_unknown$m.z_range_min)
+    #   features_unknown$m.z_range_max <- as.numeric(features_unknown$m.z_range_max)
+    #   features_unknown$RT_range_min <- as.numeric(features_unknown$RT_range_min)
+    #   features_unknown$RT_range_max <- as.numeric(features_unknown$RT_range_max)
+    #   features_unknown$ion_indices <- as.character(features_unknown$ion_indices)
+    #   features_unknown$count_ion_indices <- as.numeric(features_unknown$count_ion_indices)
+    #   features_unknown$m.z <- as.numeric(features_unknown$m.z)
+    #   features_unknown$Charge <- as.numeric(features_unknown$Charge)
+    #   features_unknown$mean_Scores <- as.character(features_unknown$ion_indices)
+    #   features_unknown$num_matches <- as.character(features_unknown$num_matches)
+    #   features_unknown$Modifications <- as.character(features_unknown$Modifications)
+    #   features_unknown$RT_length <- as.numeric(features_unknown$RT_length)
+    #   features_unknown$Observed_RT <- as.character(features_unknown$Observed_RT)
+    #   features_unknown$Observed_mz <- as.character(features_unknown$Observed_mz)
+    #   features_unknown$Observed_score <- as.character(features_unknown$Observed_score)
+    #
+    #   max <- nrow(temp_data_m)
+    #   pb <- winProgressBar(title = "Aligning unknown features",label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+    #   start_time <- Sys.time()
+    #   updatecounter <- 0
+    #   time_require <- 0
+    #   start <- 1
+    #   end <- max-1
+    #
+    #   count_features_unknown <- 0
+    #
+    #   for(i in start:end) ###go through all features and try to match with others in the data set
+    #   {
+    #     if(temp_data_m[i,4] == 0)###check if already matched
+    #     {
+    #       ind <- i
+    #       while(T)
+    #       {
+    #         ind = ind + 1000
+    #         if(ind > nrow(temp_data_m))
+    #         {
+    #           ind <- nrow(temp_data_m)
+    #           break
+    #         }
+    #         if(temp_data_m[ind,1] > (temp_data_m[i,1]+(border_factor*borders_m.z[2])))
+    #         {
+    #           break
+    #         }
+    #       }
+    #
+    #       sub <- temp_data_m[i:ind,]
+    #       sub <- sub[which(sub[,4] == 0),]
+    #
+    #       ###determine which other features might fit to the current unmatched feature
+    #       ###here use a wide mass and RT range to get a first preselection for Mass and RT distribution estimation                                  )
+    #
+    #       matches_preselection <- which(sub[,1] >= (temp_data_m[i,1]+(border_factor*borders_m.z[1])) & sub[,1] <= (temp_data_m[i,1]+(border_factor*borders_m.z[2])) & sub[,2] >= (temp_data_m[i,2]+(border_factor*borders_RT[1])) & sub[,2] <= (temp_data_m[i,2]+(border_factor*borders_RT[2])) & as.numeric(sub[,3]) == temp_data_m[i,3])
+    #
+    #       #Sys.time()-start
+    #       if(length(matches_preselection) >= min_num_ions_collapse) ###at least n other features
+    #       {
+    #         ###now get estimate of true Mass and RT by using the median
+    #         median_m.z <- median(sub[matches_preselection,1],na.rm=T)
+    #         median_RT <- median(sub[matches_preselection,2],na.rm=T)
+    #
+    #         ###determine which features will be finally matched with the normal m/z and RT range
+    #         matches_temp <- which(as.numeric(sub[,1]) >= (median_m.z+borders_m.z[1]) & as.numeric(sub[,1]) <= (median_m.z+borders_m.z[2]) & as.numeric(sub[,2]) >= (median_RT+borders_RT[1]) & as.numeric(sub[,2]) <= (median_RT+borders_RT[2]) & as.numeric(sub[,3]) == temp_data_m[i,3])
+    #
+    #         matches <- as.numeric(rownames(sub)[matches_temp]) ###convert back to original data
+    #
+    #         if(length(matches) >= min_num_ions_collapse)
+    #         {
+    #           count_features <- count_features + 1
+    #           count_features_unknown <- count_features_unknown + 1
+    #           ###new feature - give a new name
+    #           name <- paste("Feature",count_features,sep="_")
+    #
+    #           sequences_relevant <- which(nchar(as.character(allpeptides[matches,"Sequence"])) > 1)
+    #           if(length(sequences_relevant) > 0)
+    #           {
+    #             sequence <- paste(unique(allpeptides[matches[sequences_relevant],"Sequence"]),collapse=";")
+    #           }else
+    #           {
+    #             sequence <- ""
+    #           }
+    #
+    #           proteins_relevant <- which(nchar(as.character(allpeptides[matches,"Proteins"])) > 1)
+    #           if(length(proteins_relevant) > 0)
+    #           {
+    #             protein <- paste(unique(allpeptides[matches[proteins_relevant],"Proteins"]),collapse=";")
+    #           }else
+    #           {
+    #             protein <- ""
+    #           }
+    #
+    #           msmsscansrelevant_relevant <- which(nchar(as.character(allpeptides[matches,"MSMS.Scan.Numbers"])) > 1)
+    #           if(length(msmsscansrelevant_relevant) > 0)
+    #           {
+    #             msmsscan <- paste(unique(paste(allpeptides[matches[msmsscansrelevant_relevant],"Raw.file"],"_msms_",allpeptides[matches[msmsscansrelevant_relevant],"MSMS.Scan.Numbers"],sep="")),collapse=";")
+    #           }else
+    #           {
+    #             msmsscan <- ""
+    #           }
+    #
+    #           median_mass <- median(allpeptides$Mass[matches],na.rm=T)
+    #           Charge <- temp_data_m[i,3]
+    #
+    #
+    #           if(sequence != "")
+    #           {
+    #             scores <- NULL
+    #             num_matches <- NULL
+    #             for(s in unique(unlist(str_split(sequence,";"))))
+    #             {
+    #               scores <- append(scores,mean(allpeptides[matches,"Score"][which(allpeptides[matches,"Sequence"] == s)],na.rm=T))
+    #               num_matches <- append(num_matches,length(which(allpeptides[matches,"Sequence"] == s)))
+    #             }
+    #
+    #             Modifications_relevant <- which(nchar(as.character(allpeptides[matches,"Modifications"])) > 1)
+    #             if(length(Modifications_relevant) > 0)
+    #             {
+    #               Modifications <- paste(unique(allpeptides[matches[Modifications_relevant],"Modifications"]),collapse=";")
+    #               Modifications <- gsub("Unmodified","",Modifications)
+    #
+    #             }else
+    #             {
+    #               Modifications <- ""
+    #             }
+    #           }else
+    #           {
+    #             scores <- NA
+    #             num_matches <- NA
+    #             Modifications <- ""
+    #           }
+    #
+    #           RT_length <- median(allpeptides$Retention.Length[matches],na.rm=T)
+    #
+    #           temp_RT <- aggregate(allpeptides$Retention.time[matches],by=list(Raw.file=allpeptides$Raw.file[matches]),FUN=mean,na.rm=T)
+    #           Observed_RT <- paste(temp_RT[match(sample_list,temp_RT$Raw.file),2],collapse=";") ###order all observed RT according to sample_list
+    #
+    #           temp_mz <- aggregate(allpeptides$isotope_corrected_mz_at_max_int[matches],by=list(Raw.file=allpeptides$Raw.file[matches]),FUN=mean,na.rm=T)
+    #           Observed_mz <- paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
+    #
+    #           temp_score <- aggregate(allpeptides$Score[matches],by=list(Raw.file=allpeptides$Raw.file[matches]),FUN=mean,na.rm=T)
+    #           Observed_score <- paste(temp_score[match(sample_list,temp_score$Raw.file),2],collapse=";") ###order all observed scores according to sample_list
+    #
+    #
+    #           set(x = features_unknown,i = as.integer(count_features_unknown),j = as.integer(c(1,4,5,6,11,15,16,17,19,20,21)),value = as.list(c(name,
+    #                                                                                                                                             sequence,
+    #                                                                                                                                             protein,
+    #                                                                                                                                             msmsscan,
+    #                                                                                                                                             paste(matches,collapse = ","),
+    #                                                                                                                                             paste(scores,collapse=";"),
+    #                                                                                                                                             paste(num_matches,collapse=";"),
+    #                                                                                                                                             Modifications,
+    #                                                                                                                                             Observed_RT,
+    #                                                                                                                                             Observed_mz,
+    #                                                                                                                                             Observed_score
+    #           )))
+    #           set(x = features_unknown,i = as.integer(count_features_unknown),j = as.integer(c(2,3,7,8,9,10,12,13,14,18)),value = as.list(c(
+    #             as.numeric(median_m.z),
+    #             as.numeric(median_RT),
+    #             as.numeric(median_m.z+borders_m.z[1]),
+    #             as.numeric(median_m.z+borders_m.z[2]),
+    #             as.numeric(median_RT+borders_RT[1]),
+    #             as.numeric(median_RT+borders_RT[2]),
+    #             as.numeric(length(matches)),
+    #             as.numeric(median_mass),
+    #             as.numeric(Charge),
+    #             RT_length
+    #           )))
+    #
+    #
+    #           ###now mark matched features
+    #           # starttime <- Sys.time()
+    #           # temp_data_m[matches,4] <- 1
+    #           # print(Sys.time()-starttime)
+    #
+    #           set(temp_data_m,i=as.integer(matches),j=4L,value=1)
+    #
+    #         }
+    #
+    #
+    #       }
+    #     }
+    #
+    #     updatecounter <- updatecounter + 1
+    #     if(updatecounter >= 5000)
+    #     {
+    #       time_elapsed <- difftime(Sys.time(),start_time,units="secs")
+    #       time_require <- (time_elapsed/(i/max))*(1-(i/max))
+    #       td <- seconds_to_period(time_require)
+    #       time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
+    #
+    #       updatecounter <- 0
+    #       setWinProgressBar(pb, i, label=paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
+    #     }
+    #
+    #   }
+    #   close(pb)
+    #
+    #   features_unknown <- features_unknown[1:count_features_unknown,]
+    #
+    #   #write.table(features_unknown,paste("Temporary_files\\Features_aligned_unknown",output_file_names_add,".txt",sep=""),row.names = F)
+    #
+    #   ####Combine known and unknown features
+    #   features <- rbind(features,features_unknown)
+    #   rownames(features) <- c()
+    #
+    #   ###number of matched to number of unmatched ions
+    #   value <- length(which(temp_data_m$Matched == 1))/nrow(temp_data_m) * 100
+    #   barplot(value,main="Relative fraction of features which are matched",ylab="Fraction [%]")
+    #
+    #   QC_data[["Numbers_matched_features"]] <- value
+    #
+    #   ###Store all results
+    #
+    #   save(temp_data_m,features,count_features_unknown,file=paste("features_aligned_step_2",output_file_names_add,".RData",sep=""))
+    # }
 
     #write.table(features,paste("Temporary_files\\Features_aligned",output_file_names_add,".txt",sep=""),row.names = F)
 
@@ -2214,6 +2457,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     features <- features[which(features$merged_with == ""),]
     features <- as.data.frame(features)[,-ncolumns]
 
+
     ####now add mz and RT calibration information per feature
 
     RT_calibration_vals <- as.data.frame(matrix(ncol=length(sample_list),nrow=nrow(features),NA))
@@ -2248,7 +2492,12 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
       pep_seq <- str_split(features$Sequence,";",simplify = T)
 
-      evidence <- evidence[which(evidence$Raw.file %in% sample_list),]
+      if(multiplicity == 1)evidence <- evidence[which(evidence$Raw.file %in% sample_list),]
+      if(multiplicity > 1)
+      {
+        evidence <- evidence[which(evidence$Raw.file %in% gsub("_Channel_heavy|_Channel_light|_Channel_medium","",sample_list)),]
+      }
+
 
       ###evidence_peptides
       evidence_peptides <- unique(evidence$Sequence)
@@ -2321,8 +2570,41 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
               set(mz_calibration_vals,as.integer(i),as.integer(1:length(sample_list)),value = as.list(c(calc_mz)))
             }else ###use MaxQ correction
             {
-              calc_mz <- aggregate(evidence_sub[indices,"Uncalibrated...Calibrated.m.z..Da."],by=list(Sample=evidence_sub$Raw.file[indices]),FUN="mean",na.rm=T)
-              set(mz_calibration_vals,as.integer(i),as.integer(match(calc_mz$Sample,sample_list)),value = as.list(c(calc_mz$x)))
+              if(multiplicity == 1)
+              {
+                calc_mz <- aggregate(evidence_sub[indices,"Uncalibrated...Calibrated.m.z..Da."],by=list(Sample=evidence_sub$Raw.file[indices]),FUN="mean",na.rm=T)
+                set(mz_calibration_vals,as.integer(i),as.integer(match(calc_mz$Sample,sample_list)),value = as.list(c(calc_mz$x)))
+              }else if(multiplicity > 1)
+              {
+                evidence_sub[indices,"Uncalibrated...Calibrated.m.z..Da."][is.na(evidence_sub[indices,"Uncalibrated...Calibrated.m.z..Da."])] <- 0
+                calc_mz <- aggregate(evidence_sub[indices,"Uncalibrated...Calibrated.m.z..Da."],by=list(Sample=evidence_sub$Raw.file[indices]),FUN="mean",na.rm=T)
+
+                if(multiplicity == 2)
+                {
+                  names <- c(paste(calc_mz$Sample,rep("_Channel_light",length(unique(evidence_sub$Raw.file[indices]))),sep=""),
+                             paste(calc_mz$Sample,rep("_Channel_heavy",length(unique(evidence_sub$Raw.file[indices]))),sep=""))
+                  calc_mz <- calc_mz[rep(1:nrow(calc_mz),multiplicity),]
+                  calc_mz$Sample <- names
+                }else if(multiplicity == 3)
+                {
+                  names <- c(paste(calc_mz$Sample,rep("_Channel_light",length(unique(evidence_sub$Raw.file[indices]))),sep=""),
+                             paste(calc_mz$Sample,rep("_Channel_medium",length(unique(evidence_sub$Raw.file[indices]))),sep=""),
+                             paste(calc_mz$Sample,rep("_Channel_heavy",length(unique(evidence_sub$Raw.file[indices]))),sep=""))
+                  calc_mz <- calc_mz[rep(1:nrow(calc_mz),multiplicity),]
+                  calc_mz$Sample <- names
+                }
+
+                #order by sample_list
+                correction_mz <- calc_mz$x[match(calc_mz$Sample,sample_list)]
+
+                #get SILAC-dependent m/z differences
+                observed <- as.numeric(str_split(features$Observed_mz[i],pattern = ";",simplify = T)) - features$m.z[i]
+
+                #final correction
+                correction <- observed + correction_mz
+
+                set(mz_calibration_vals,as.integer(i),as.integer(1:ncol(mz_calibration_vals)),value = as.list(c(correction)))
+              }
             }
           }
         }
@@ -2355,11 +2637,41 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
         if(any(colnames(evidence) == "Resolution"))
         {
           temp_data <- evidence[which(rowSums(is.na(evidence[,c("Raw.file","Retention.time","m.z","Charge","Resolution","Uncalibrated...Calibrated.m.z..Da.")])) == 0),c("Raw.file","Retention.time","m.z","Charge","Resolution","Uncalibrated...Calibrated.m.z..Da.")]
+          temp_data$Resolution <- 0
         }else
         {
           temp_data <- evidence[which(rowSums(is.na(evidence[,c("Raw.file","Retention.time","m.z","Charge","Uncalibrated...Calibrated.m.z..Da.")])) == 0),c("Raw.file","Retention.time","m.z","Charge","Uncalibrated...Calibrated.m.z..Da.")]
           temp_data$Resolution <- 0
         }
+
+        #replicate rows in case of multiplicity > 1
+        if(multiplicity > 1)
+        {
+          temp_data_temp <- NULL
+          for(labels in names(SILAC_settings))
+          {
+            if(labels == "light")
+            {
+              temp <- temp_data
+              temp$Raw.file <- paste(temp$Raw.file,"_Channel_light",sep="")
+              temp_data_temp <- temp
+            }
+            if(labels == "medium")
+            {
+              temp <- temp_data
+              temp$Raw.file <- paste(temp$Raw.file,"_Channel_medium",sep="")
+              temp_data_temp <- rbind(temp_data_temp,temp)
+            }
+            if(labels == "heavy")
+            {
+              temp <- temp_data
+              temp$Raw.file <- paste(temp$Raw.file,"_Channel_heavy",sep="")
+              temp_data_temp <- rbind(temp_data_temp,temp)
+            }
+          }
+          temp_data <- temp_data_temp
+        }
+
         print("Train RF models for mz-corrections")
         for(s in sample_list)
         {
@@ -2446,6 +2758,8 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
         all_ion_indices <- all_ion_indices[1:(cur_index-1),]
 
+        all_ion_indices$Resolution <- 0
+
         raw_files <- sample_list
 
         ####get mean ion propperties per feature to predict m/z calibration per feature for each sample
@@ -2474,16 +2788,20 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
             temp_data <- temp_data[which(rowSums(is.na(temp_data[,c("Retention.time","m.z","Charge","Resolution")])) == 0),]
 
-
             if(nrow(temp_data)> 0)
             {
-
               prediction <- stats::predict(models[[select_model]], temp_data[,-1], type = "response")
+              #add expected SILAC isotope shifts
+              if(multiplicity > 1)
+              {
+                if(grepl("light",colnames(mz_calibration_vals)[c]))SILAC_label_mz_shift <- features$m.z._shift_light[temp_data$Feature]
+                if(grepl("medium",colnames(mz_calibration_vals)[c]))SILAC_label_mz_shift <- features$m.z._shift_medium[temp_data$Feature]
+                if(grepl("heavy",colnames(mz_calibration_vals)[c]))SILAC_label_mz_shift <- features$m.z._shift_heavy[temp_data$Feature]
+                prediction <- prediction + SILAC_label_mz_shift
+              }
 
               set(mz_calibration_vals,as.integer(temp_data$Feature),as.integer(c),value = prediction)
             }
-
-
           }
           updatecounter <- updatecounter + 1
           if(updatecounter >= 1)
@@ -2498,38 +2816,59 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
           }
         }
         close(pb)
-      }else if(mz_calibration == T & use_mz_at_max_int_for_correction==T) ###use observed mz at max intensity calibration
-      {
-        ###get rowMedians of mz_calibrations
-        feature_specific_correction_factor <- rowMedians(as.matrix(mz_calibration_vals),na.rm=T)
-        ###examine deviation of expected feature_specific shift from observed shift
-        expected_from_observed <- mz_calibration_vals/feature_specific_correction_factor
-        ###sample specific shift
-        sample_specific_correction_factor <- colMedians(log2(as.matrix(expected_from_observed)),na.rm=T)
-        ###examine deviation of expected feature_specific shift from observed shift
-        expected_from_observed <- mz_calibration_vals/((2^sample_specific_correction_factor)*feature_specific_correction_factor)
-        ###plot per sample how well expected mz correction correlates with observed correction
-        for(c in 1:length(sample_list))
-        {
-          sel <- which(abs(mz_calibration_vals[,c]) < 0.01)
-          smoothScatter(mz_calibration_vals[sel,c],(2^sample_specific_correction_factor[c])*feature_specific_correction_factor[sel],xlim=c(-0.005,0.005),ylim=c(-0.005,0.005),main=sample_list[c],xlab="Observed mz - feature mz",ylab="Expected mz - feature mz")
-          abline(a=0,b=1)
-          fit <- lm((2^sample_specific_correction_factor[c])*feature_specific_correction_factor[sel]~mz_calibration_vals[sel,c])
-          abline(fit,lty=2)
-          text(0,0.004,paste("Rsq:",round(as.numeric(summary(fit)[8]),digits=2)))
-        }
-        ###store calibration factor
-        QC_data[["mz_calibration_feature_specific_cor_factor"]] <- feature_specific_correction_factor
-        QC_data[["mz_calibration_sample_specific_cor_factor"]] <- sample_specific_correction_factor
+      }
 
-        ###replace missing values with expected correction factors
-        for(c in 1:ncol(mz_calibration_vals))
+      # }else if(mz_calibration == T & use_mz_at_max_int_for_correction==T) ###use observed mz at max intensity calibration
+      # {
+      #   ###get rowMedians of mz_calibrations
+      #   feature_specific_correction_factor <- rowMedians(as.matrix(mz_calibration_vals),na.rm=T)
+      #   ###examine deviation of expected feature_specific shift from observed shift
+      #   expected_from_observed <- mz_calibration_vals/feature_specific_correction_factor
+      #   ###sample specific shift
+      #   sample_specific_correction_factor <- colMedians(log2(as.matrix(expected_from_observed)),na.rm=T)
+      #   ###examine deviation of expected feature_specific shift from observed shift
+      #   expected_from_observed <- mz_calibration_vals/((2^sample_specific_correction_factor)*feature_specific_correction_factor)
+      #   ###plot per sample how well expected mz correction correlates with observed correction
+      #   for(c in 1:length(sample_list))
+      #   {
+      #     sel <- which(abs(mz_calibration_vals[,c]) < 0.01)
+      #     smoothScatter(mz_calibration_vals[sel,c],(2^sample_specific_correction_factor[c])*feature_specific_correction_factor[sel],xlim=c(-0.005,0.005),ylim=c(-0.005,0.005),main=sample_list[c],xlab="Observed mz - feature mz",ylab="Expected mz - feature mz")
+      #     abline(a=0,b=1)
+      #     fit <- lm((2^sample_specific_correction_factor[c])*feature_specific_correction_factor[sel]~mz_calibration_vals[sel,c])
+      #     abline(fit,lty=2)
+      #     text(0,0.004,paste("Rsq:",round(as.numeric(summary(fit)[8]),digits=2)))
+      #   }
+      #   ###store calibration factor
+      #   QC_data[["mz_calibration_feature_specific_cor_factor"]] <- feature_specific_correction_factor
+      #   QC_data[["mz_calibration_sample_specific_cor_factor"]] <- sample_specific_correction_factor
+      #
+      #   ###replace missing values with expected correction factors
+      #   for(c in 1:ncol(mz_calibration_vals))
+      #   {
+      #     selection <- which(is.na(mz_calibration_vals[,c]))
+      #     mz_calibration_vals[,c][selection] <- ((2^sample_specific_correction_factor[c])*feature_specific_correction_factor[selection])
+      #   }
+      # }
+
+      #if there are still missing values just fill with 0 or expected SILAC shifts
+      if(any(is.na(mz_calibration_vals)))
+      {
+        if(multiplicity == 1)
         {
-          selection <- which(is.na(mz_calibration_vals[,c]))
-          mz_calibration_vals[,c][selection] <- ((2^sample_specific_correction_factor[c])*feature_specific_correction_factor[selection])
+          mz_calibration_vals[is.na(mz_calibration_vals)] <- 0
+        }else
+        {
+          for(c in 1:ncol(mz_calibration_vals))
+          {
+            if(any(is.na(mz_calibration_vals[,c])))
+            {
+              if(grepl("light",colnames(mz_calibration_vals)[c]))mz_calibration_vals[is.na(mz_calibration_vals[,c]),c] <- features$m.z._shift_light[is.na(mz_calibration_vals[,c])]
+              if(grepl("medium",colnames(mz_calibration_vals)[c]))mz_calibration_vals[is.na(mz_calibration_vals[,c]),c] <- features$m.z._shift_medium[is.na(mz_calibration_vals[,c])]
+              if(grepl("heavy",colnames(mz_calibration_vals)[c]))mz_calibration_vals[is.na(mz_calibration_vals[,c]),c] <- features$m.z._shift_heavy[is.na(mz_calibration_vals[,c])]
+            }
+          }
         }
       }
-      mz_calibration_vals[is.na(mz_calibration_vals)] <- 0
 
       if(RT_calibration == T)
       {
@@ -2575,7 +2914,6 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       }
       RT_calibration_vals[is.na(RT_calibration_vals)] <- 0
 
-
       if(MassSpec_mode == "TIMSToF" & IM_calibration == T)
       {
         ###use median of IM_calibration per sample for NAs
@@ -2588,7 +2926,22 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     }else ###no calibration should be done
     {
       RT_calibration_vals[is.na(RT_calibration_vals)] <- 0
-      mz_calibration_vals[is.na(mz_calibration_vals)] <- 0
+
+      if(multiplicity == 1)
+      {
+        mz_calibration_vals[is.na(mz_calibration_vals)] <- 0
+      }else if(multiplicity > 1)
+      {
+        for(c in 1:ncol(mz_calibration_vals))
+        {
+          if(any(is.na(mz_calibration_vals[,c])))
+          {
+            if(grepl("light",colnames(mz_calibration_vals)[c]))mz_calibration_vals[is.na(mz_calibration_vals[,c]),c] <- features$m.z._shift_light[is.na(mz_calibration_vals[,c])]
+            if(grepl("medium",colnames(mz_calibration_vals)[c]))mz_calibration_vals[is.na(mz_calibration_vals[,c]),c] <- features$m.z._shift_medium[is.na(mz_calibration_vals[,c])]
+            if(grepl("heavy",colnames(mz_calibration_vals)[c]))mz_calibration_vals[is.na(mz_calibration_vals[,c]),c] <- features$m.z._shift_heavy[is.na(mz_calibration_vals[,c])]
+          }
+        }
+      }
       if(MassSpec_mode == "TIMSToF")IM_calibration_vals[is.na(IM_calibration_vals)] <- 0
     }
 
@@ -2603,7 +2956,6 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     options(warn=0)
     crap <- gc(F)
   }
-
 }
 
 #' Extend IceR features by expected +1-isotopic features
@@ -2660,6 +3012,9 @@ add_isotope_features <- function(path_to_features,feature_table_file_name="Featu
 #' @return Extended list ist stored in the specified feature_table_file_name.
 add_missed_peptides <- function(path_to_features,feature_table_file_name="Features_aligned_merged.txt",path_to_fasta,min_AA_length=7,max_AA_length=25,max_add_per_protein=10,min_observations=5)
 {
+  ###to do
+  #add expected mz shifts for SILAC (m.z._shift_light,m.z._shift_medium,m.z._shift_heavy) to features_unknown if multiplicity > 1
+
   options(warn = -1)
   suppressWarnings(suppressMessages(library(Peptides,quietly = T)))
   suppressWarnings(suppressMessages(library(randomForest,quietly = T)))
@@ -3072,6 +3427,21 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
   }
 
 
+  #determine multiplicity
+  if(any(grepl("_Channel_light|_Channel_medium|_Channel_heavy",sample_list)))
+  {
+    if(any(grepl("_Channel_medium",sample_list)))
+    {
+      multiplicity <- 3
+    }else
+    {
+      multiplicity <- 2
+    }
+  }else
+  {
+    multiplicity <- 1
+  }
+
   ###use observed RTs and fill missing values with median RT calibrations per sample
   if(RT_calibration == T)
   {
@@ -3220,13 +3590,22 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
         features_select <- which(is.na(mz_calibration_vals[,c]))
 
         temp_data <- median_feature_properties[which(median_feature_properties$Feature %in% features_select),]
-
+        temp_data$Resolution <- 0
         temp_data <- temp_data[which(rowSums(is.na(temp_data[,c("Retention.time","m.z","Charge","Resolution")])) == 0),]
 
         if(nrow(temp_data)> 0)
         {
           prediction <- stats::predict(models[[select_model]], temp_data[,-1], type = "response")
 
+          if(any(is.na(prediction)))prediction[which(is.na(prediction))] <- 0
+          #add expected SILAC isotope shifts
+          if(multiplicity > 1)
+          {
+            if(grepl("light",colnames(mz_calibration_vals)[c]))SILAC_label_mz_shift <- features_unknown$m.z._shift_light[temp_data$Feature]
+            if(grepl("medium",colnames(mz_calibration_vals)[c]))SILAC_label_mz_shift <- features_unknown$m.z._shift_medium[temp_data$Feature]
+            if(grepl("heavy",colnames(mz_calibration_vals)[c]))SILAC_label_mz_shift <- features_unknown$m.z._shift_heavy[temp_data$Feature]
+            prediction <- prediction + SILAC_label_mz_shift
+          }
           set(mz_calibration_vals,as.integer(temp_data$Feature),as.integer(c),value = prediction)
         }
       }
@@ -4007,7 +4386,15 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       max <- 1
       print("Load spectra data")
       pb <- winProgressBar(title = paste("Load spectra data:",Sample_ID),label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
-      load(paste(Sample_ID,"_all_ions.RData",sep="")) ###ions with RT and intensity in variable dat
+
+      if(grepl("_Channel_light|_Channel_medium|_Channel_heavy",Sample_ID))#SILAC mode --- all channels in one raw file
+      {
+        load(paste(gsub("_Channel_light|_Channel_medium|_Channel_heavy","",Sample_ID),"_all_ions.RData",sep="")) ###ions with RT and intensity in variable dat
+      }else
+      {
+        load(paste(Sample_ID,"_all_ions.RData",sep="")) ###ions with RT and intensity in variable dat
+      }
+
       setWinProgressBar(pb, 1, label=paste( round(1/max*100, 0)," % done (",1,"/",max,")",sep = ""))
       close(pb)
 
@@ -4951,6 +5338,25 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   ###keep samples which should be actually requantified
   Requant_samples <- gsub("RT_calibration\\.","",colnames(features)[which(grepl("RT_calibration\\.",colnames(features)))])
   Requant_samples <- gsub("\\.","-",Requant_samples)
+
+  #check in which quant mode ... LFQ or SILAC
+  if(any(grepl("_Channel_light|_Channel_medium|_Channel_heavy",Requant_samples)))
+  {
+    if(any(grepl("_Channel_medium",Requant_samples)))
+    {
+      multiplicity <- 3
+      labels <- c("_Channel_light","_Channel_medium","_Channel_heavy")
+    }else
+    {
+      multiplicity <- 2
+      labels <- c("_Channel_light","Channel_heavy")
+    }
+    samples <- paste(sort(rep(samples,multiplicity)),labels,sep="")
+  }else
+  {
+    multiplicity <- 1
+  }
+
   samples <- samples[which(samples %in% Requant_samples)]
 
   ###Perform quantification of decoy features
@@ -5163,6 +5569,10 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   samples <- substr(samples,1,regexpr("_all_ions.RData",samples)-1)
   Requant_samples <- gsub("RT_calibration\\.","",colnames(features)[which(grepl("RT_calibration\\.",colnames(features)))])
   Requant_samples <- gsub("\\.","-",Requant_samples)
+  if(multiplicity > 1)
+  {
+    samples <- paste(sort(rep(samples,multiplicity)),labels,sep="")
+  }
   samples <- samples[which(samples %in% Requant_samples)]
 
   dir.create(paste(path_to_mzXML,"\\all_ion_lists\\Extracted feature intensities",output_file_names_add,sep=""),showWarnings = F)
@@ -5334,259 +5744,192 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   }
   close(pb)
 
-  ###if no peak detection was done, directly continue
-  ###otherwise select per feature best peak
-  if(peak_detection == T)
+
+
+  ###add step to store information which peak was finally picked
+  peak_decision <- function(features_select,peak_quant,samples,s,RT_correction_factors,mz_correction_factors,features_intensity_sample,Ioncount_sample,feature_with_background_intensity_sample,Ioncount_with_background_sample,peak_selected_sample,delta_mz,delta_rt,peak_min_ion_count,chunk=NULL,num_chunks=NULL,progress=T)
   {
-    features_intensity <- as.matrix(features_intensity)
-    Ioncount_feature_sample_matrix <- as.matrix(Ioncount_feature_sample_matrix)
-    feature_with_background_intensity <- as.matrix(feature_with_background_intensity)
-    Ioncount_feature_with_background_intensity <- as.matrix(Ioncount_feature_with_background_intensity)
-
-    ###prepare matrix in which we store decisions which peaks where used for quantification
-    peak_selected <- matrix(ncol=ncol(feature_with_background_intensity),nrow=nrow(feature_with_background_intensity))
-    colnames(peak_selected) <- colnames(feature_with_background_intensity)
-
-    ###transfer all quantification data from Standard for quantifications where no peak was detected
-    selection <- which(is.na(as.matrix(peak_quant$Standard$num_peaks_with_background)) & is.na(as.matrix(peak_quant$Peak_1$num_peaks_with_background)))
-    features_intensity[selection] <- as.matrix(peak_quant$Standard$features_intensity)[selection]
-    Ioncount_feature_sample_matrix[selection] <- as.matrix(peak_quant$Standard$Ioncount_feature_sample_matrix)[selection]
-    feature_with_background_intensity[selection] <- as.matrix(peak_quant$Standard$feature_with_background_intensity)[selection]
-    Ioncount_feature_with_background_intensity[selection] <- as.matrix(peak_quant$Standard$Ioncount_feature_with_background_intensity)[selection]
-    peak_selected[selection] <- num_peaks_store+1 ###standard window
-
-    ###next, transfer all quantification data from Peak1 for quantifications where correct peak is known
-    selection <- which(as.matrix(peak_quant$Peak_1$correct_peak_with_background == 1))
-    features_intensity[selection] <- as.matrix(peak_quant$Peak_1$features_intensity)[selection]
-    Ioncount_feature_sample_matrix[selection] <- as.matrix(peak_quant$Peak_1$Ioncount_feature_sample_matrix)[selection]
-    feature_with_background_intensity[selection] <- as.matrix(peak_quant$Peak_1$feature_with_background_intensity)[selection]
-    Ioncount_feature_with_background_intensity[selection] <- as.matrix(peak_quant$Peak_1$Ioncount_feature_with_background_intensity)[selection]
-    peak_selected[selection] <- 1 ###closest peak = peak 1
-
-    ###if no peak is know, change from NA to 0
-    peak_quant$Peak_1$correct_peak[is.na(peak_quant$Peak_1$correct_peak_with_background)] <- 0
-    peak_quant$Peak_1$correct_peak_with_background[is.na(peak_quant$Peak_1$correct_peak_with_background)] <- 0
-
-    features_intensity <- as.data.frame(features_intensity)
-    Ioncount_feature_sample_matrix <- as.data.frame(Ioncount_feature_sample_matrix)
-    feature_with_background_intensity <- as.data.frame(feature_with_background_intensity)
-    Ioncount_feature_with_background_intensity <- as.data.frame(Ioncount_feature_with_background_intensity)
-    peak_selected <- as.data.frame(peak_selected)
-
-    ###For the next step of peak quantifications where true peak is not known we will need RT and mz correction factors per feature
-    ###Extract RT and mz correction factors per sample and feature
-    indices_RT_correction <- which(grepl("RT_calibration",colnames(features_select)))
-    indices_mz_correction <- which(grepl("mz_calibration",colnames(features_select)))
-    ordering_indices <- match(gsub("-",".",samples),gsub("RT_calibration\\.","",colnames(features_select)[indices_RT_correction]))
-    indices_RT_correction <- indices_RT_correction[ordering_indices]
-    indices_mz_correction <- indices_mz_correction[ordering_indices]
-
-    RT_correction_factors <- features_select[,indices_RT_correction]
-    mz_correction_factors <- features_select[,indices_mz_correction]
-    colnames(RT_correction_factors) <- samples
-    rownames(RT_correction_factors) <- features_select$Feature_name
-    colnames(mz_correction_factors) <- samples
-    rownames(mz_correction_factors) <- features_select$Feature_name
-
-    ###general RT and mz windows
-    delta_mz <- median(features_select$m.z - features_select$m.z_range_min,na.rm=T)
-    delta_rt <- median(features_select$RT - features_select$RT_range_min,na.rm=T)/2
-
-    ###add step to store information which peak was finally picked
-    peak_decision <- function(features_select,peak_quant,samples,s,RT_correction_factors,mz_correction_factors,features_intensity_sample,Ioncount_sample,feature_with_background_intensity_sample,Ioncount_with_background_sample,peak_selected_sample,delta_mz,delta_rt,peak_min_ion_count,chunk=NULL,num_chunks=NULL,progress=T)
+    suppressWarnings(suppressMessages(library(data.table,quietly = T)))
+    suppressWarnings(suppressMessages(library(lubridate,quietly = T)))
+    if(progress == T)
     {
-      suppressWarnings(suppressMessages(library(data.table,quietly = T)))
-      suppressWarnings(suppressMessages(library(lubridate,quietly = T)))
-      if(progress == T)
+      pb <- winProgressBar(title = paste("Prepare for peak selection -",samples[s]),label=paste( round(0/1*100, 0),"% done"), min = 0,max = 1, width = 300)
+      close(pb)
+    }
+
+    ###next, decide for all other feature quantifications for which at least 1 peak was available which peak quantification should be used
+    max <- nrow(features_select)
+
+    if(progress == T)
+    {
+      if(!is.null(chunk) & !is.null(num_chunks))
       {
-        pb <- winProgressBar(title = paste("Prepare for peak selection -",samples[s]),label=paste( round(0/1*100, 0),"% done"), min = 0,max = 1, width = 300)
-        close(pb)
+        pb <- winProgressBar(title = paste("Select peaks (",chunk,"/",num_chunks,") - ",samples[s],sep=""),label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+      }else
+      {
+        pb <- winProgressBar(title = paste("Select peaks -",samples[s]),label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
       }
+    }
 
-      ###next, decide for all other feature quantifications for which at least 1 peak was available which peak quantification should be used
-      max <- nrow(features_select)
-
-      if(progress == T)
+    start_time <- Sys.time()
+    updatecounter <- 0
+    time_require <- 0
+    for(i in 1:nrow(features_select))
+    {
+      num_detected_peaks <- ifelse(!is.na(peak_quant$Standard$num_peaks_with_background[i,..s]),as.numeric(peak_quant$Standard$num_peaks_with_background[i,..s]),
+                                   ifelse(!is.na(peak_quant$Peak_1$num_peaks_with_background[i,..s]),as.numeric(peak_quant$Peak_1$num_peaks_with_background[i,..s]),NA))
+      if(!is.na(num_detected_peaks)) ##peaks detected?
       {
-        if(!is.null(chunk) & !is.null(num_chunks))
+        ###check if more than 1 peak was detected and true peak is unknown
+        if(num_detected_peaks > 1)
         {
-          pb <- winProgressBar(title = paste("Select peaks (",chunk,"/",num_chunks,") - ",samples[s],sep=""),label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
-        }else
-        {
-          pb <- winProgressBar(title = paste("Select peaks -",samples[s]),label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
-        }
-      }
-
-      start_time <- Sys.time()
-      updatecounter <- 0
-      time_require <- 0
-      for(i in 1:nrow(features_select))
-      {
-        num_detected_peaks <- ifelse(!is.na(peak_quant$Standard$num_peaks_with_background[i,..s]),as.numeric(peak_quant$Standard$num_peaks_with_background[i,..s]),
-                                     ifelse(!is.na(peak_quant$Peak_1$num_peaks_with_background[i,..s]),as.numeric(peak_quant$Peak_1$num_peaks_with_background[i,..s]),NA))
-        if(!is.na(num_detected_peaks)) ##peaks detected?
-        {
-          ###check if more than 1 peak was detected and true peak is unknown
-          if(num_detected_peaks > 1)
+          # if(!is.na(peak_quant$Peak_1$correct_peak_with_background[i,..s]) & peak_quant$Peak_1$correct_peak_with_background[i,..s] == 1) ###correct peak is known so take the closest peak
+          # {
+          #   ###already done in batch before
+          #   ###so nothing to be done here
+          #
+          #   # set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$features_intensity[i,..s]))
+          #   # set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$Ioncount_feature_sample_matrix[i,..s]))
+          #   # set(feature_with_background_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$feature_with_background_intensity[i,..s]))
+          #   # set(Ioncount_with_background_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$Ioncount_feature_with_background_intensity[i,..s]))
+          #   #
+          #   # set(dT1_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$dT1[i,..s]))
+          #   # set(dM1_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$dM1[i,..s]))
+          #
+          # }
+          if(peak_quant$Peak_1$correct_peak_with_background[i,..s] == 0) ###more than 1 peaks but true peak not known
           {
-            # if(!is.na(peak_quant$Peak_1$correct_peak_with_background[i,..s]) & peak_quant$Peak_1$correct_peak_with_background[i,..s] == 1) ###correct peak is known so take the closest peak
-            # {
-            #   ###already done in batch before
-            #   ###so nothing to be done here
-            #
-            #   # set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$features_intensity[i,..s]))
-            #   # set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$Ioncount_feature_sample_matrix[i,..s]))
-            #   # set(feature_with_background_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$feature_with_background_intensity[i,..s]))
-            #   # set(Ioncount_with_background_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$Ioncount_feature_with_background_intensity[i,..s]))
-            #   #
-            #   # set(dT1_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$dT1[i,..s]))
-            #   # set(dM1_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Peak_1$dM1[i,..s]))
-            #
-            # }
-            if(peak_quant$Peak_1$correct_peak_with_background[i,..s] == 0) ###more than 1 peaks but true peak not known
+            ###check if for any sample the correct peak is known
+            num_known_peaks <- length(which(peak_quant$Peak_1$correct_peak_with_background[i,] != 0))
+            if(num_known_peaks > 0)
             {
-              ###check if for any sample the correct peak is known
-              num_known_peaks <- length(which(peak_quant$Peak_1$correct_peak_with_background[i,] != 0))
-              if(num_known_peaks > 0)
+              ###now check where correct known peak usually is located in samples were true location is known
+              known_peaks_indices <- which(peak_quant$Peak_1$correct_peak_with_background[i,] == 1)
+
+              RT_in_known <- as.numeric(peak_quant$Peak_1$Peak_rt_with_background[i,..known_peaks_indices])
+              mz_in_known <- as.numeric(peak_quant$Peak_1$Peak_mz_with_background[i,..known_peaks_indices])
+
+              ###get RT and mz for detected peaks in current sample
+              detected_peaks_rt <- vector("numeric",as.numeric(num_detected_peaks))
+              detected_peaks_mz <- vector("numeric",as.numeric(num_detected_peaks))
+
+              names(detected_peaks_rt) <- 1:as.numeric(num_detected_peaks)
+              names(detected_peaks_mz) <- 1:as.numeric(num_detected_peaks)
+
+              for(p in 1:length(detected_peaks_rt))
               {
-                ###now check where correct known peak usually is located in samples were true location is known
-                known_peaks_indices <- which(peak_quant$Peak_1$correct_peak_with_background[i,] == 1)
+                detected_peaks_rt[p] <- as.numeric(peak_quant[[p]]$Peak_rt_with_background[i,..s])
+                detected_peaks_mz[p] <- as.numeric(peak_quant[[p]]$Peak_mz_with_background[i,..s])
+              }
 
-                RT_in_known <- as.numeric(peak_quant$Peak_1$Peak_rt_with_background[i,..known_peaks_indices])
-                mz_in_known <- as.numeric(peak_quant$Peak_1$Peak_mz_with_background[i,..known_peaks_indices])
+              if(length(which(!is.na(detected_peaks_rt) & !is.na(detected_peaks_mz))) > 0)
+              {
+                detected_peaks_rt <- detected_peaks_rt[which(!is.na(detected_peaks_rt))]
+                detected_peaks_mz <- detected_peaks_mz[which(!is.na(detected_peaks_mz))]
 
-                ###get RT and mz for detected peaks in current sample
-                detected_peaks_rt <- vector("numeric",as.numeric(num_detected_peaks))
-                detected_peaks_mz <- vector("numeric",as.numeric(num_detected_peaks))
+                ###now compare observed deviations in RT and mz for known peaks with the deviation for the potential peaks in current sample
+                ###for this comparison we have to correct detected peaks RT and m/z with the RT and mz correction factors per corresponding sample
+                ###otherwise it would be possible that current sample shows e.g. a global RT shift which could result in a major deviation from all other known samples
+                ###thus a peak wouldn?t be selected although it e.g. perfectly lies close to the expected window
+                RT_in_known_corrected <- as.numeric(RT_in_known - RT_correction_factors[i,known_peaks_indices])
+                mz_in_known_corrected <- as.numeric(mz_in_known - mz_correction_factors[i,known_peaks_indices])
 
-                names(detected_peaks_rt) <- 1:as.numeric(num_detected_peaks)
-                names(detected_peaks_mz) <- 1:as.numeric(num_detected_peaks)
+                detected_peaks_rt_corrected <- as.numeric(detected_peaks_rt - RT_correction_factors[i,s])
+                detected_peaks_mz_corrected <- as.numeric(detected_peaks_mz - mz_correction_factors[i,s])
+                names(detected_peaks_rt_corrected) <- names(detected_peaks_rt)
+                names(detected_peaks_mz_corrected) <- names(detected_peaks_mz)
+                ###check if the detected RT and mz of peaks are likely to be belonging to the same population (compared to known peaks)
+                ###99 % of observed data points lie within 2*sd range --> if delta RT or delta mZ > 2*sd then most likely this is the wrong peak
+                ###so we assume all peaks within this RT and mz deviation to be valid peak candidates
+                ###if these deviations are smaller then the expected RT and mz window, we expand these acceptance criteria accordingly
+                delta_RT_cut <- 3*sd(RT_in_known_corrected,na.rm=T)
+                if(is.na(delta_RT_cut) | delta_RT_cut < 2*delta_rt)delta_RT_cut <- 2*delta_rt
+                delta_mz_cut <- 3*sd(mz_in_known_corrected,na.rm=T)
+                if(is.na(delta_mz_cut) | delta_mz_cut < 3*delta_mz)delta_mz_cut <- 3*delta_mz
 
-                for(p in 1:length(detected_peaks_rt))
+                within_range <- ifelse(abs(detected_peaks_rt_corrected-mean(RT_in_known_corrected,na.rm=T)) <= delta_RT_cut &
+                                         abs(detected_peaks_mz_corrected-mean(mz_in_known_corrected,na.rm=T)) <= delta_mz_cut,T,F)
+
+                if(any(within_range))
                 {
-                  detected_peaks_rt[p] <- as.numeric(peak_quant[[p]]$Peak_rt_with_background[i,..s])
-                  detected_peaks_mz[p] <- as.numeric(peak_quant[[p]]$Peak_mz_with_background[i,..s])
-                }
+                  detected_peaks_rt <- detected_peaks_rt[within_range]
+                  detected_peaks_mz <- detected_peaks_mz[within_range]
+                  detected_peaks_rt_corrected <- detected_peaks_rt_corrected[within_range]
+                  detected_peaks_mz_corrected <- detected_peaks_mz_corrected[within_range]
 
-                if(length(which(!is.na(detected_peaks_rt) & !is.na(detected_peaks_mz))) > 0)
-                {
-                  detected_peaks_rt <- detected_peaks_rt[which(!is.na(detected_peaks_rt))]
-                  detected_peaks_mz <- detected_peaks_mz[which(!is.na(detected_peaks_mz))]
-
-                  ###now compare observed deviations in RT and mz for known peaks with the deviation for the potential peaks in current sample
-                  ###for this comparison we have to correct detected peaks RT and m/z with the RT and mz correction factors per corresponding sample
-                  ###otherwise it would be possible that current sample shows e.g. a global RT shift which could result in a major deviation from all other known samples
-                  ###thus a peak wouldn?t be selected although it e.g. perfectly lies close to the expected window
-                  RT_in_known_corrected <- as.numeric(RT_in_known - RT_correction_factors[i,known_peaks_indices])
-                  mz_in_known_corrected <- as.numeric(mz_in_known - mz_correction_factors[i,known_peaks_indices])
-
-                  detected_peaks_rt_corrected <- as.numeric(detected_peaks_rt - RT_correction_factors[i,s])
-                  detected_peaks_mz_corrected <- as.numeric(detected_peaks_mz - mz_correction_factors[i,s])
-                  names(detected_peaks_rt_corrected) <- names(detected_peaks_rt)
-                  names(detected_peaks_mz_corrected) <- names(detected_peaks_mz)
-                  ###check if the detected RT and mz of peaks are likely to be belonging to the same population (compared to known peaks)
-                  ###99 % of observed data points lie within 2*sd range --> if delta RT or delta mZ > 2*sd then most likely this is the wrong peak
-                  ###so we assume all peaks within this RT and mz deviation to be valid peak candidates
-                  ###if these deviations are smaller then the expected RT and mz window, we expand these acceptance criteria accordingly
-                  delta_RT_cut <- 3*sd(RT_in_known_corrected,na.rm=T)
-                  if(is.na(delta_RT_cut) | delta_RT_cut < 2*delta_rt)delta_RT_cut <- 2*delta_rt
-                  delta_mz_cut <- 3*sd(mz_in_known_corrected,na.rm=T)
-                  if(is.na(delta_mz_cut) | delta_mz_cut < 3*delta_mz)delta_mz_cut <- 3*delta_mz
-
-                  within_range <- ifelse(abs(detected_peaks_rt_corrected-mean(RT_in_known_corrected,na.rm=T)) <= delta_RT_cut &
-                                           abs(detected_peaks_mz_corrected-mean(mz_in_known_corrected,na.rm=T)) <= delta_mz_cut,T,F)
-
-                  if(any(within_range))
+                  ###now check that at the position of the potential peak no other peak is present in samples with known peak
+                  count_other_peaks <- sum(peak_quant$Peak_1$num_peaks_with_background[i,..known_peaks_indices]-1)
+                  if(count_other_peaks > 0)
                   {
-                    detected_peaks_rt <- detected_peaks_rt[within_range]
-                    detected_peaks_mz <- detected_peaks_mz[within_range]
-                    detected_peaks_rt_corrected <- detected_peaks_rt_corrected[within_range]
-                    detected_peaks_mz_corrected <- detected_peaks_mz_corrected[within_range]
-
-                    ###now check that at the position of the potential peak no other peak is present in samples with known peak
-                    count_other_peaks <- sum(peak_quant$Peak_1$num_peaks_with_background[i,..known_peaks_indices]-1)
-                    if(count_other_peaks > 0)
+                    other_peaks <- as.data.frame(matrix(ncol=6,nrow=count_other_peaks,0))
+                    counter <- 0
+                    for(o in known_peaks_indices) ###collect peak data for all additional peaks in samples were peak was known
                     {
-                      other_peaks <- as.data.frame(matrix(ncol=6,nrow=count_other_peaks,0))
-                      counter <- 0
-                      for(o in known_peaks_indices) ###collect peak data for all additional peaks in samples were peak was known
+                      cur_peak_count <- as.numeric(peak_quant$Peak_1$num_peaks_with_background[i,..o]-1)
+                      if(cur_peak_count > 0)
                       {
-                        cur_peak_count <- as.numeric(peak_quant$Peak_1$num_peaks_with_background[i,..o]-1)
-                        if(cur_peak_count > 0)
+                        for(p in 1:cur_peak_count)
                         {
-                          for(p in 1:cur_peak_count)
-                          {
-                            counter <- counter + 1
-                            temp <- c(as.numeric(peak_quant[[p+1]]$Peak_mz_with_background[i,..o] - mz_correction_factors[i,o]),
-                                      as.numeric(peak_quant[[p+1]]$Peak_rt_with_background[i,..o] - RT_correction_factors[i,o]),
-                                      as.numeric(peak_quant[[p+1]]$feature_with_background_intensity[i,..o]),
-                                      as.numeric(peak_quant[[p+1]]$Ioncount_feature_with_background_intensity[i,..o]))
-                            ##Add distance in RT and mz to known peak
-                            temp[5:6] <- c(abs(temp[1] - as.numeric(peak_quant[[1]]$Peak_mz_with_background[i,..o] - mz_correction_factors[i,o])),
-                                           abs(temp[2] - as.numeric(peak_quant[[1]]$Peak_rt_with_background[i,..o] - RT_correction_factors[i,o])))
+                          counter <- counter + 1
+                          temp <- c(as.numeric(peak_quant[[p+1]]$Peak_mz_with_background[i,..o] - mz_correction_factors[i,o]),
+                                    as.numeric(peak_quant[[p+1]]$Peak_rt_with_background[i,..o] - RT_correction_factors[i,o]),
+                                    as.numeric(peak_quant[[p+1]]$feature_with_background_intensity[i,..o]),
+                                    as.numeric(peak_quant[[p+1]]$Ioncount_feature_with_background_intensity[i,..o]))
+                          ##Add distance in RT and mz to known peak
+                          temp[5:6] <- c(abs(temp[1] - as.numeric(peak_quant[[1]]$Peak_mz_with_background[i,..o] - mz_correction_factors[i,o])),
+                                         abs(temp[2] - as.numeric(peak_quant[[1]]$Peak_rt_with_background[i,..o] - RT_correction_factors[i,o])))
 
-                            set(other_peaks,as.integer(counter),as.integer(1:6),value=list(temp[1],temp[2],temp[3],temp[4],temp[5],temp[6]))
-                          }
+                          set(other_peaks,as.integer(counter),as.integer(1:6),value=list(temp[1],temp[2],temp[3],temp[4],temp[5],temp[6]))
                         }
                       }
-                      #disregard other peaks below significance threshold
-                      other_peaks <- other_peaks[which(other_peaks$V4 > peak_min_ion_count),]
-                      #disregard other peaks which are too close to the expected peak
-                      #cutoff RT: > 1.1* half peak width -> half RT extraction window
-                      #cutoff mz: > 1.1* delta_mz -> half mz extraction window
-                      other_peaks <- other_peaks[which(other_peaks$V5 > delta_mz*1.1 | other_peaks$V6 > ((features_select$RT_length[i]/2)*1.1)),]
-                      ###now check that selected peaks are not close to other peaks in sampels with known peak
-                      overlap <- vector("logical",length(detected_peaks_rt))
-                      for(o in 1:length(detected_peaks_rt))
-                      {
-                        overlap[o] <- ifelse(any(abs(detected_peaks_rt_corrected[o]-other_peaks$V2) <= (delta_rt/2) & abs(detected_peaks_mz_corrected[o]-other_peaks$V1) <= delta_mz/2,na.rm=T),T,F)
-                      }
-                    }else
+                    }
+                    #disregard other peaks below significance threshold
+                    other_peaks <- other_peaks[which(other_peaks$V4 > peak_min_ion_count),]
+                    #disregard other peaks which are too close to the expected peak
+                    #cutoff RT: > 1.1* half peak width -> half RT extraction window
+                    #cutoff mz: > 1.1* delta_mz -> half mz extraction window
+                    other_peaks <- other_peaks[which(other_peaks$V5 > delta_mz*1.1 | other_peaks$V6 > ((features_select$RT_length[i]/2)*1.1)),]
+                    ###now check that selected peaks are not close to other peaks in sampels with known peak
+                    overlap <- vector("logical",length(detected_peaks_rt))
+                    for(o in 1:length(detected_peaks_rt))
                     {
-                      overlap <- vector("logical",length(detected_peaks_rt))
+                      overlap[o] <- ifelse(any(abs(detected_peaks_rt_corrected[o]-other_peaks$V2) <= (delta_rt/2) & abs(detected_peaks_mz_corrected[o]-other_peaks$V1) <= delta_mz/2,na.rm=T),T,F)
+                    }
+                  }else
+                  {
+                    overlap <- vector("logical",length(detected_peaks_rt))
+                  }
+
+                  if(any(overlap == F)) ###not overlapping with any other peak
+                  {
+                    detected_peaks_rt <- detected_peaks_rt_corrected[which(overlap == F)]
+                    detected_peaks_mz <- detected_peaks_mz_corrected[which(overlap == F)]
+                    RT_in_known_other_peaks <- as.numeric(peak_quant$Peak_1$Peak_rt_with_background[i,..known_peaks_indices])
+                    mz_in_known_other_peaks <- as.numeric(peak_quant$Peak_1$Peak_mz_with_background[i,..known_peaks_indices])
+
+                    ###select the peak which is closest to all other known peaks
+
+                    sum_delta_to_known_peaks_rt <- vector("numeric",length(detected_peaks_rt))
+                    sum_delta_to_known_peaks_mz <- vector("numeric",length(detected_peaks_rt))
+                    sum_delta_to_known_peaks <- vector("numeric",length(detected_peaks_rt))
+                    for(p in 1:length(detected_peaks_rt))
+                    {
+                      sum_delta_to_known_peaks_rt[p] <- sum(detected_peaks_rt[p]-RT_in_known_corrected,na.rm=T)/length(RT_in_known_corrected)
+                      sum_delta_to_known_peaks_mz[p] <- sum((detected_peaks_mz[p]-mz_in_known_corrected)*500,na.rm=T)/length(RT_in_known_corrected)
+                      sum_delta_to_known_peaks[p] <- abs(sum_delta_to_known_peaks_rt[p])+abs(sum_delta_to_known_peaks_mz[p])
                     }
 
-                    if(any(overlap == F)) ###not overlapping with any other peak
-                    {
-                      detected_peaks_rt <- detected_peaks_rt_corrected[which(overlap == F)]
-                      detected_peaks_mz <- detected_peaks_mz_corrected[which(overlap == F)]
-                      RT_in_known_other_peaks <- as.numeric(peak_quant$Peak_1$Peak_rt_with_background[i,..known_peaks_indices])
-                      mz_in_known_other_peaks <- as.numeric(peak_quant$Peak_1$Peak_mz_with_background[i,..known_peaks_indices])
+                    selected_peak <- which(!is.na(sum_delta_to_known_peaks) & sum_delta_to_known_peaks == min(sum_delta_to_known_peaks[which(!is.na(sum_delta_to_known_peaks))],na.rm=T))[1]
+                    selected_peak <- as.numeric(names(detected_peaks_rt)[selected_peak])
+                    set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$features_intensity[i,..s]))
+                    set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$Ioncount_feature_sample_matrix[i,..s]))
 
-                      ###select the peak which is closest to all other known peaks
+                    set(feature_with_background_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$feature_with_background_intensity[i,..s]))
+                    set(Ioncount_with_background_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$Ioncount_feature_with_background_intensity[i,..s]))
 
-                      sum_delta_to_known_peaks_rt <- vector("numeric",length(detected_peaks_rt))
-                      sum_delta_to_known_peaks_mz <- vector("numeric",length(detected_peaks_rt))
-                      sum_delta_to_known_peaks <- vector("numeric",length(detected_peaks_rt))
-                      for(p in 1:length(detected_peaks_rt))
-                      {
-                        sum_delta_to_known_peaks_rt[p] <- sum(detected_peaks_rt[p]-RT_in_known_corrected,na.rm=T)/length(RT_in_known_corrected)
-                        sum_delta_to_known_peaks_mz[p] <- sum((detected_peaks_mz[p]-mz_in_known_corrected)*500,na.rm=T)/length(RT_in_known_corrected)
-                        sum_delta_to_known_peaks[p] <- abs(sum_delta_to_known_peaks_rt[p])+abs(sum_delta_to_known_peaks_mz[p])
-                      }
+                    set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(selected_peak))
 
-                      selected_peak <- which(!is.na(sum_delta_to_known_peaks) & sum_delta_to_known_peaks == min(sum_delta_to_known_peaks[which(!is.na(sum_delta_to_known_peaks))],na.rm=T))[1]
-                      selected_peak <- as.numeric(names(detected_peaks_rt)[selected_peak])
-                      set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$features_intensity[i,..s]))
-                      set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$Ioncount_feature_sample_matrix[i,..s]))
-
-                      set(feature_with_background_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$feature_with_background_intensity[i,..s]))
-                      set(Ioncount_with_background_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$Ioncount_feature_with_background_intensity[i,..s]))
-
-                      set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(selected_peak))
-
-                    }else###none of the peaks is not overlapping with an other peak detected in other samples where correct peak was known
-                    {
-                      set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$features_intensity[i,..s]))
-                      set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_sample_matrix[i,..s]))
-
-                      set(feature_with_background_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$feature_with_background_intensity[i,..s]))
-                      set(Ioncount_with_background_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_with_background_intensity[i,..s]))
-
-                      set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(length(peak_quant)))
-                    }
-
-                  }else ###none of the peaks is within the accepted range thus use standard window
+                  }else###none of the peaks is not overlapping with an other peak detected in other samples where correct peak was known
                   {
                     set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$features_intensity[i,..s]))
                     set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_sample_matrix[i,..s]))
@@ -5596,7 +5939,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
                     set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(length(peak_quant)))
                   }
-                }else ###none of the peaks is valid
+
+                }else ###none of the peaks is within the accepted range thus use standard window
                 {
                   set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$features_intensity[i,..s]))
                   set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_sample_matrix[i,..s]))
@@ -5606,9 +5950,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
                   set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(length(peak_quant)))
                 }
-
-
-              }else ###in no other sample the correct peak is known thus take total window
+              }else ###none of the peaks is valid
               {
                 set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$features_intensity[i,..s]))
                 set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_sample_matrix[i,..s]))
@@ -5618,119 +5960,121 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
                 set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(length(peak_quant)))
               }
+
+
+            }else ###in no other sample the correct peak is known thus take total window
+            {
+              set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$features_intensity[i,..s]))
+              set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_sample_matrix[i,..s]))
+
+              set(feature_with_background_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$feature_with_background_intensity[i,..s]))
+              set(Ioncount_with_background_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_with_background_intensity[i,..s]))
+
+              set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(length(peak_quant)))
             }
-          }else if(num_detected_peaks == 1) ###one peak was detected
+          }
+        }else if(num_detected_peaks == 1) ###one peak was detected
+        {
+          ### check if correct peak is unknown
+          if(peak_quant$Peak_1$correct_peak_with_background[i,..s] == 0)
           {
-            ### check if correct peak is unknown
-            if(peak_quant$Peak_1$correct_peak_with_background[i,..s] == 0)
+            ###if this is the case check if detected peak is comparable to correct peaks in other samples where correct peak was known
+            ###check if for any sample the correct peak is known
+            num_known_peaks <- length(which(peak_quant$Peak_1$correct_peak_with_background[i,] != 0))
+            if(num_known_peaks > 0)
             {
-              ###if this is the case check if detected peak is comparable to correct peaks in other samples where correct peak was known
-              ###check if for any sample the correct peak is known
-              num_known_peaks <- length(which(peak_quant$Peak_1$correct_peak_with_background[i,] != 0))
-              if(num_known_peaks > 0)
+              ###now check where correct known peak usually is located in samples were true location is known
+              known_peaks_indices <- which(peak_quant$Peak_1$correct_peak_with_background[i,] == 1)
+
+              RT_in_known <- as.numeric(peak_quant$Peak_1$Peak_rt_with_background[i,..known_peaks_indices])
+              mz_in_known <- as.numeric(peak_quant$Peak_1$Peak_mz_with_background[i,..known_peaks_indices])
+
+              detected_peaks_rt <- as.numeric(peak_quant[[1]]$Peak_rt_with_background[i,..s])
+              detected_peaks_mz <- as.numeric(peak_quant[[1]]$Peak_mz_with_background[i,..s])
+              if(length(which(!is.na(detected_peaks_rt) & !is.na(detected_peaks_mz))) > 0)
               {
-                ###now check where correct known peak usually is located in samples were true location is known
-                known_peaks_indices <- which(peak_quant$Peak_1$correct_peak_with_background[i,] == 1)
+                detected_peaks_rt <- detected_peaks_rt[which(!is.na(detected_peaks_rt))]
+                detected_peaks_mz <- detected_peaks_mz[which(!is.na(detected_peaks_mz))]
 
-                RT_in_known <- as.numeric(peak_quant$Peak_1$Peak_rt_with_background[i,..known_peaks_indices])
-                mz_in_known <- as.numeric(peak_quant$Peak_1$Peak_mz_with_background[i,..known_peaks_indices])
+                ###now compare observed deviations in RT and mz for known peaks with the deviation for the potential peaks in current sample
+                ###for this comparison we have to correct detected peaks RT and m/z with the RT and mz correction factors per corresponding sample
+                ###otherwise it would be possible that current sample shows e.g. a global RT shift which could result in a major deviation from all other known samples
+                ###thus a peak wouldn?t be selected although it e.g. perfectly lies close to the expected window
+                RT_in_known_corrected <- as.numeric(RT_in_known - RT_correction_factors[i,known_peaks_indices])
+                mz_in_known_corrected <- as.numeric(mz_in_known - mz_correction_factors[i,known_peaks_indices])
 
-                detected_peaks_rt <- as.numeric(peak_quant[[1]]$Peak_rt_with_background[i,..s])
-                detected_peaks_mz <- as.numeric(peak_quant[[1]]$Peak_mz_with_background[i,..s])
-                if(length(which(!is.na(detected_peaks_rt) & !is.na(detected_peaks_mz))) > 0)
+                detected_peaks_rt_corrected <- as.numeric(detected_peaks_rt - RT_correction_factors[i,s])
+                detected_peaks_mz_corrected <- as.numeric(detected_peaks_mz - mz_correction_factors[i,s])
+
+                ###check if the detected RT and mz of peaks are likely to be belonging to the same population (compared to known peaks)
+                ###99 % of observed data points lie within 3*sd range --> if delta RT or delta mZ > 2*sd then most likely this is the wrong peak
+                ###so we assume all peaks within this RT and mz deviation to be valid peak candidates
+                ###if these deviations are smaller then the expected RT and mz window, we expand these acceptance criteria accordingly
+                delta_RT_cut <- 3*sd(RT_in_known,na.rm=T)
+                if(is.na(delta_RT_cut) | delta_RT_cut < 2*delta_rt)delta_RT_cut <- 2*delta_rt
+                delta_mz_cut <- 3*sd(mz_in_known,na.rm=T)
+                if(is.na(delta_mz_cut) | delta_mz_cut < 3*delta_mz)delta_mz_cut <- 3*delta_mz
+
+                within_range <- ifelse(abs(detected_peaks_rt_corrected-mean(RT_in_known_corrected,na.rm=T)) <= delta_RT_cut &
+                                         abs(detected_peaks_mz_corrected-mean(mz_in_known_corrected,na.rm=T)) <= delta_mz_cut,T,F)
+
+                if(any(within_range))
                 {
-                  detected_peaks_rt <- detected_peaks_rt[which(!is.na(detected_peaks_rt))]
-                  detected_peaks_mz <- detected_peaks_mz[which(!is.na(detected_peaks_mz))]
+                  detected_peaks_rt <- detected_peaks_rt[within_range]
+                  detected_peaks_mz <- detected_peaks_mz[within_range]
+                  detected_peaks_rt_corrected <- detected_peaks_rt_corrected[within_range]
+                  detected_peaks_mz_corrected <- detected_peaks_mz_corrected[within_range]
 
-                  ###now compare observed deviations in RT and mz for known peaks with the deviation for the potential peaks in current sample
-                  ###for this comparison we have to correct detected peaks RT and m/z with the RT and mz correction factors per corresponding sample
-                  ###otherwise it would be possible that current sample shows e.g. a global RT shift which could result in a major deviation from all other known samples
-                  ###thus a peak wouldn?t be selected although it e.g. perfectly lies close to the expected window
-                  RT_in_known_corrected <- as.numeric(RT_in_known - RT_correction_factors[i,known_peaks_indices])
-                  mz_in_known_corrected <- as.numeric(mz_in_known - mz_correction_factors[i,known_peaks_indices])
-
-                  detected_peaks_rt_corrected <- as.numeric(detected_peaks_rt - RT_correction_factors[i,s])
-                  detected_peaks_mz_corrected <- as.numeric(detected_peaks_mz - mz_correction_factors[i,s])
-
-                  ###check if the detected RT and mz of peaks are likely to be belonging to the same population (compared to known peaks)
-                  ###99 % of observed data points lie within 3*sd range --> if delta RT or delta mZ > 2*sd then most likely this is the wrong peak
-                  ###so we assume all peaks within this RT and mz deviation to be valid peak candidates
-                  ###if these deviations are smaller then the expected RT and mz window, we expand these acceptance criteria accordingly
-                  delta_RT_cut <- 3*sd(RT_in_known,na.rm=T)
-                  if(is.na(delta_RT_cut) | delta_RT_cut < 2*delta_rt)delta_RT_cut <- 2*delta_rt
-                  delta_mz_cut <- 3*sd(mz_in_known,na.rm=T)
-                  if(is.na(delta_mz_cut) | delta_mz_cut < 3*delta_mz)delta_mz_cut <- 3*delta_mz
-
-                  within_range <- ifelse(abs(detected_peaks_rt_corrected-mean(RT_in_known_corrected,na.rm=T)) <= delta_RT_cut &
-                                           abs(detected_peaks_mz_corrected-mean(mz_in_known_corrected,na.rm=T)) <= delta_mz_cut,T,F)
-
-                  if(any(within_range))
+                  ###now check that at the position of the potential peak no other peak is present in samples with known peak
+                  count_other_peaks <- sum(peak_quant$Peak_1$num_peaks_with_background[i,..known_peaks_indices]-1)
+                  if(count_other_peaks > 0)
                   {
-                    detected_peaks_rt <- detected_peaks_rt[within_range]
-                    detected_peaks_mz <- detected_peaks_mz[within_range]
-                    detected_peaks_rt_corrected <- detected_peaks_rt_corrected[within_range]
-                    detected_peaks_mz_corrected <- detected_peaks_mz_corrected[within_range]
-
-                    ###now check that at the position of the potential peak no other peak is present in samples with known peak
-                    count_other_peaks <- sum(peak_quant$Peak_1$num_peaks_with_background[i,..known_peaks_indices]-1)
-                    if(count_other_peaks > 0)
+                    other_peaks <- as.data.frame(matrix(ncol=6,nrow=count_other_peaks,0))
+                    counter <- 0
+                    for(o in known_peaks_indices) ###collect peak data for all additional peaks in samples were peak was known
                     {
-                      other_peaks <- as.data.frame(matrix(ncol=6,nrow=count_other_peaks,0))
-                      counter <- 0
-                      for(o in known_peaks_indices) ###collect peak data for all additional peaks in samples were peak was known
+                      cur_peak_count <- as.numeric(peak_quant$Peak_1$num_peaks_with_background[i,..o]-1)
+                      if(cur_peak_count > 0)
                       {
-                        cur_peak_count <- as.numeric(peak_quant$Peak_1$num_peaks_with_background[i,..o]-1)
-                        if(cur_peak_count > 0)
+                        for(p in 1:cur_peak_count)
                         {
-                          for(p in 1:cur_peak_count)
-                          {
-                            counter <- counter + 1
-                            temp <- c(as.numeric(peak_quant[[p+1]]$Peak_mz_with_background[i,..o] - mz_correction_factors[i,o]),
-                                      as.numeric(peak_quant[[p+1]]$Peak_rt_with_background[i,..o] - RT_correction_factors[i,o]),
-                                      as.numeric(peak_quant[[p+1]]$feature_with_background_intensity[i,..o]),
-                                      as.numeric(peak_quant[[p+1]]$Ioncount_feature_with_background_intensity[i,..o]))
-                            ##Add distance in RT and mz to known peak
-                            temp[5:6] <- c(abs(temp[1] - as.numeric(peak_quant[[1]]$Peak_mz_with_background[i,..o] - mz_correction_factors[i,o])),
-                                           abs(temp[2] - as.numeric(peak_quant[[1]]$Peak_rt_with_background[i,..o] - RT_correction_factors[i,o])))
-                          }
+                          counter <- counter + 1
+                          temp <- c(as.numeric(peak_quant[[p+1]]$Peak_mz_with_background[i,..o] - mz_correction_factors[i,o]),
+                                    as.numeric(peak_quant[[p+1]]$Peak_rt_with_background[i,..o] - RT_correction_factors[i,o]),
+                                    as.numeric(peak_quant[[p+1]]$feature_with_background_intensity[i,..o]),
+                                    as.numeric(peak_quant[[p+1]]$Ioncount_feature_with_background_intensity[i,..o]))
+                          ##Add distance in RT and mz to known peak
+                          temp[5:6] <- c(abs(temp[1] - as.numeric(peak_quant[[1]]$Peak_mz_with_background[i,..o] - mz_correction_factors[i,o])),
+                                         abs(temp[2] - as.numeric(peak_quant[[1]]$Peak_rt_with_background[i,..o] - RT_correction_factors[i,o])))
                         }
                       }
-                      #disregard other peaks below significance threshold
-                      other_peaks <- other_peaks[which(other_peaks$V4 > peak_min_ion_count),]
-                      #disregard other peaks which are too close to the expected peak
-                      #cutoff RT: > 1.1* half peak width -> half RT extraction window
-                      #cutoff mz: > 1.1* delta_mz -> half mz extraction window
-                      other_peaks <- other_peaks[which(other_peaks$V5 > delta_mz*1.1 | other_peaks$V6 > ((features_select$RT_length[i]/2)*1.1)),]
-                      ###now check that selected peaks are not close to other peaks in sampels with known peak
-
-                      overlap <- ifelse(any(abs(detected_peaks_rt_corrected-other_peaks$V2) <= delta_rt/2 & abs(detected_peaks_mz_corrected-other_peaks$V1) <= delta_mz/2,na.rm=T),T,F)
-                    }else
-                    {
-                      overlap <- F
                     }
+                    #disregard other peaks below significance threshold
+                    other_peaks <- other_peaks[which(other_peaks$V4 > peak_min_ion_count),]
+                    #disregard other peaks which are too close to the expected peak
+                    #cutoff RT: > 1.1* half peak width -> half RT extraction window
+                    #cutoff mz: > 1.1* delta_mz -> half mz extraction window
+                    other_peaks <- other_peaks[which(other_peaks$V5 > delta_mz*1.1 | other_peaks$V6 > ((features_select$RT_length[i]/2)*1.1)),]
+                    ###now check that selected peaks are not close to other peaks in sampels with known peak
 
-                    if(any(overlap == F)) ###not overlapping with any other peak
-                    {
-                      selected_peak <- 1
+                    overlap <- ifelse(any(abs(detected_peaks_rt_corrected-other_peaks$V2) <= delta_rt/2 & abs(detected_peaks_mz_corrected-other_peaks$V1) <= delta_mz/2,na.rm=T),T,F)
+                  }else
+                  {
+                    overlap <- F
+                  }
 
-                      set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$features_intensity[i,..s]))
-                      set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$Ioncount_feature_sample_matrix[i,..s]))
+                  if(any(overlap == F)) ###not overlapping with any other peak
+                  {
+                    selected_peak <- 1
 
-                      set(feature_with_background_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$feature_with_background_intensity[i,..s]))
-                      set(Ioncount_with_background_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$Ioncount_feature_with_background_intensity[i,..s]))
+                    set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$features_intensity[i,..s]))
+                    set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$Ioncount_feature_sample_matrix[i,..s]))
 
-                      set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(selected_peak))
-                    }else###the peak is overlapping with an other peak detected in other samples where correct peak was known
-                    {
-                      set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$features_intensity[i,..s]))
-                      set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_sample_matrix[i,..s]))
+                    set(feature_with_background_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$feature_with_background_intensity[i,..s]))
+                    set(Ioncount_with_background_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant[[selected_peak]]$Ioncount_feature_with_background_intensity[i,..s]))
 
-                      set(feature_with_background_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$feature_with_background_intensity[i,..s]))
-                      set(Ioncount_with_background_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_with_background_intensity[i,..s]))
-
-                      set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(length(peak_quant)))
-                    }
-                  }else ###none of the peaks is within the accepted range thus use standard window
+                    set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(selected_peak))
+                  }else###the peak is overlapping with an other peak detected in other samples where correct peak was known
                   {
                     set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$features_intensity[i,..s]))
                     set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_sample_matrix[i,..s]))
@@ -5740,7 +6084,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
                     set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(length(peak_quant)))
                   }
-                }else ###no peak was valid
+                }else ###none of the peaks is within the accepted range thus use standard window
                 {
                   set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$features_intensity[i,..s]))
                   set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_sample_matrix[i,..s]))
@@ -5750,7 +6094,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
                   set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(length(peak_quant)))
                 }
-              }else ###in no other sample the correct peak was known thus use the standard window
+              }else ###no peak was valid
               {
                 set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$features_intensity[i,..s]))
                 set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_sample_matrix[i,..s]))
@@ -5760,128 +6104,221 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
                 set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(length(peak_quant)))
               }
+            }else ###in no other sample the correct peak was known thus use the standard window
+            {
+              set(features_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$features_intensity[i,..s]))
+              set(Ioncount_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_sample_matrix[i,..s]))
 
+              set(feature_with_background_intensity_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$feature_with_background_intensity[i,..s]))
+              set(Ioncount_with_background_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(peak_quant$Standard$Ioncount_feature_with_background_intensity[i,..s]))
 
+              set(peak_selected_sample,i = as.integer(i),j = as.integer(1),value = as.numeric(length(peak_quant)))
             }
 
 
           }
+
+
         }
-
-        updatecounter <- updatecounter + 1
-        if(updatecounter >= 10 & progress == T)
-        {
-          time_elapsed <- difftime(Sys.time(),start_time,units="secs")
-          time_require <- (time_elapsed/(i/max))*(1-(i/max))
-          td <- seconds_to_period(time_require)
-          time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
-
-          updatecounter <- 0
-          setWinProgressBar(pb, i, label=paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
-        }
-
       }
-      if(progress == T)
+
+      updatecounter <- updatecounter + 1
+      if(updatecounter >= 10 & progress == T)
       {
-        close(pb)
+        time_elapsed <- difftime(Sys.time(),start_time,units="secs")
+        time_require <- (time_elapsed/(i/max))*(1-(i/max))
+        td <- seconds_to_period(time_require)
+        time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
+
+        updatecounter <- 0
+        setWinProgressBar(pb, i, label=paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
       }
 
-      return(list(features_intensity_sample=features_intensity_sample,
-                  Ioncount_sample=Ioncount_sample,
-                  feature_with_background_intensity_sample=feature_with_background_intensity_sample,
-                  Ioncount_with_background_sample=Ioncount_with_background_sample,
-                  peak_selected_sample=peak_selected_sample))
     }
-
-    ###split up quant results into chunks of 50000 features
-    ###perform individually peak selection per chunk
-    ###combine results afterwards again
-    ###purpose: keep peak quant file size low otherwise memory can be quickly overloaded in case of a large experiment
-    chunk_size <- 50000
-    num_chunks <- ceiling(nrow(features)/chunk_size)
-    for(chunk in 1:num_chunks)
+    if(progress == T)
     {
-      start <- (chunk-1)*chunk_size+1
-      end <- (chunk)*chunk_size
-      if(end > nrow(features))end <- nrow(features)
-
-      features_temp <- features_select[start:end,]
-
-      peak_quant_temp <- peak_quant
-      for(p in 1:(num_peaks_store+1))
-      {
-        for(p2 in 1:length(peak_quant_temp[[p]]))
-        {
-          peak_quant_temp[[p]][[p2]] <- peak_quant_temp[[p]][[p2]][start:end,]
-        }
-      }
-
-      ######perform peak decision
-      suppressWarnings(suppressMessages(library(doParallel,quietly = T)))
-
-      cl <- makeCluster(n_cores)
-      registerDoParallel(cl)
-
-      res <- foreach(s=1:length(samples)) %dopar%
-        {
-          peak_decision(features_select = features_temp,
-                        peak_quant = peak_quant_temp,
-                        samples,
-                        s = s,
-                        RT_correction_factors = RT_correction_factors[start:end,],
-                        mz_correction_factors = mz_correction_factors[start:end,],
-                        features_intensity_sample = features_intensity[start:end,s,drop=F],
-                        Ioncount_sample = Ioncount_feature_sample_matrix[start:end,s,drop=F],
-                        feature_with_background_intensity_sample = feature_with_background_intensity[start:end,s,drop=F],
-                        Ioncount_with_background_sample = Ioncount_feature_with_background_intensity[start:end,s,drop=F],
-                        peak_selected_sample = peak_selected[start:end,s,drop=F],
-                        delta_mz = delta_mz,
-                        delta_rt = delta_rt,
-                        peak_min_ion_count=peak_min_ion_count,
-                        chunk=chunk,
-                        num_chunks=num_chunks)
-        }
-      stopCluster(cl)
-
-      ###merge results from all threads
-      for(c in 1:length(samples))
-      {
-        set(features_intensity,as.integer(start:end),c,res[[c]]$features_intensity_sample)
-        set(Ioncount_feature_sample_matrix,as.integer(start:end),c,res[[c]]$Ioncount_sample)
-        set(feature_with_background_intensity,as.integer(start:end),c,res[[c]]$feature_with_background_intensity_sample)
-        set(Ioncount_feature_with_background_intensity,as.integer(start:end),c,res[[c]]$Ioncount_with_background_sample)
-        set(peak_selected,as.integer(start:end),c,res[[c]]$peak_selected_sample)
-      }
-
+      close(pb)
     }
 
-    rownames(peak_selected) <- features$Feature_name
-  }else
-  {
-    peak_selected <- NULL
+    return(list(features_intensity_sample=features_intensity_sample,
+                Ioncount_sample=Ioncount_sample,
+                feature_with_background_intensity_sample=feature_with_background_intensity_sample,
+                Ioncount_with_background_sample=Ioncount_with_background_sample,
+                peak_selected_sample=peak_selected_sample))
   }
 
-  rownames(features_intensity) <- features$Feature_name
-  rownames(Ioncount_feature_sample_matrix) <- features$Feature_name
-  rownames(feature_with_background_intensity) <- features$Feature_name
-  rownames(Ioncount_feature_with_background_intensity) <- features$Feature_name
+  #if peak detection was performed, then check if peak selection was already done. If yes, load stored data, if not, perform peak selection
+  if(file.exists(paste(path_to_features,"\\Temporary_files\\Quantification_raw_results.RData",sep="")))
+  {
+    load(paste(path_to_features,"\\Temporary_files\\Quantification_raw_results.RData",sep=""))
+    crap <- gc(F)
+  }else
+  {
+    ###if no peak detection was done, directly continue
+    ###otherwise select per feature best peak
+    if(peak_detection == T)
+    {
+      features_intensity <- as.matrix(features_intensity)
+      Ioncount_feature_sample_matrix <- as.matrix(Ioncount_feature_sample_matrix)
+      feature_with_background_intensity <- as.matrix(feature_with_background_intensity)
+      Ioncount_feature_with_background_intensity <- as.matrix(Ioncount_feature_with_background_intensity)
 
+      ###prepare matrix in which we store decisions which peaks where used for quantification
+      peak_selected <- matrix(ncol=ncol(feature_with_background_intensity),nrow=nrow(feature_with_background_intensity))
+      colnames(peak_selected) <- colnames(feature_with_background_intensity)
 
-  setwd(path_to_features)
-  dir.create("Temporary_files")
-  setwd(paste(path_to_features,"\\Temporary_files",sep=""))
-  print("Save peak detection and selection results")
-  save(features,
-       features_intensity,
-       Ioncount_feature_sample_matrix,
-       feature_with_background_intensity,
-       Ioncount_feature_with_background_intensity,
-       peak_selected,
-       peak_quant,
-       QC_data,
-       file = "Quantification_raw_results.RData")
+      ###transfer all quantification data from Standard for quantifications where no peak was detected
+      selection <- which(is.na(as.matrix(peak_quant$Standard$num_peaks_with_background)) & is.na(as.matrix(peak_quant$Peak_1$num_peaks_with_background)))
+      features_intensity[selection] <- as.matrix(peak_quant$Standard$features_intensity)[selection]
+      Ioncount_feature_sample_matrix[selection] <- as.matrix(peak_quant$Standard$Ioncount_feature_sample_matrix)[selection]
+      feature_with_background_intensity[selection] <- as.matrix(peak_quant$Standard$feature_with_background_intensity)[selection]
+      Ioncount_feature_with_background_intensity[selection] <- as.matrix(peak_quant$Standard$Ioncount_feature_with_background_intensity)[selection]
+      peak_selected[selection] <- num_peaks_store+1 ###standard window
 
-  crap <- gc(F)
+      ###next, transfer all quantification data from Peak1 for quantifications where correct peak is known
+      selection <- which(as.matrix(peak_quant$Peak_1$correct_peak_with_background == 1))
+      features_intensity[selection] <- as.matrix(peak_quant$Peak_1$features_intensity)[selection]
+      Ioncount_feature_sample_matrix[selection] <- as.matrix(peak_quant$Peak_1$Ioncount_feature_sample_matrix)[selection]
+      feature_with_background_intensity[selection] <- as.matrix(peak_quant$Peak_1$feature_with_background_intensity)[selection]
+      Ioncount_feature_with_background_intensity[selection] <- as.matrix(peak_quant$Peak_1$Ioncount_feature_with_background_intensity)[selection]
+      peak_selected[selection] <- 1 ###closest peak = peak 1
+
+      ###if no peak is know, change from NA to 0
+      peak_quant$Peak_1$correct_peak[is.na(peak_quant$Peak_1$correct_peak_with_background)] <- 0
+      peak_quant$Peak_1$correct_peak_with_background[is.na(peak_quant$Peak_1$correct_peak_with_background)] <- 0
+
+      features_intensity <- as.data.frame(features_intensity)
+      Ioncount_feature_sample_matrix <- as.data.frame(Ioncount_feature_sample_matrix)
+      feature_with_background_intensity <- as.data.frame(feature_with_background_intensity)
+      Ioncount_feature_with_background_intensity <- as.data.frame(Ioncount_feature_with_background_intensity)
+      peak_selected <- as.data.frame(peak_selected)
+
+      ###For the next step of peak quantifications where true peak is not known we will need RT and mz correction factors per feature
+      ###Extract RT and mz correction factors per sample and feature
+      indices_RT_correction <- which(grepl("RT_calibration",colnames(features_select)))
+      indices_mz_correction <- which(grepl("mz_calibration",colnames(features_select)))
+      ordering_indices <- match(gsub("-",".",samples),gsub("RT_calibration\\.","",colnames(features_select)[indices_RT_correction]))
+      indices_RT_correction <- indices_RT_correction[ordering_indices]
+      indices_mz_correction <- indices_mz_correction[ordering_indices]
+
+      RT_correction_factors <- features_select[,indices_RT_correction]
+      mz_correction_factors <- features_select[,indices_mz_correction]
+      colnames(RT_correction_factors) <- samples
+      rownames(RT_correction_factors) <- features_select$Feature_name
+      colnames(mz_correction_factors) <- samples
+      rownames(mz_correction_factors) <- features_select$Feature_name
+
+      ###general RT and mz windows
+      delta_mz <- median(features_select$m.z - features_select$m.z_range_min,na.rm=T)
+      delta_rt <- median(features_select$RT - features_select$RT_range_min,na.rm=T)/2
+
+      ###split up quant results into chunks of 50000 features
+      ###perform individually peak selection per chunk
+      ###combine results afterwards again
+      ###purpose: keep peak quant file size low otherwise memory can be quickly overloaded in case of a large experiment
+      chunk_size <- 50000
+      num_chunks <- ceiling(nrow(features)/chunk_size)
+      for(chunk in 1:num_chunks)
+      {
+        start <- (chunk-1)*chunk_size+1
+        end <- (chunk)*chunk_size
+        if(end > nrow(features))end <- nrow(features)
+
+        features_temp <- features_select[start:end,]
+
+        peak_quant_temp <- peak_quant
+        for(p in 1:(num_peaks_store+1))
+        {
+          for(p2 in 1:length(peak_quant_temp[[p]]))
+          {
+            peak_quant_temp[[p]][[p2]] <- peak_quant_temp[[p]][[p2]][start:end,]
+          }
+        }
+
+        ######perform peak decision
+        suppressWarnings(suppressMessages(library(doParallel,quietly = T)))
+
+        cl <- makeCluster(n_cores)
+        registerDoParallel(cl)
+
+        res <- foreach(s=1:length(samples)) %dopar%
+          {
+            peak_decision(features_select = features_temp,
+                          peak_quant = peak_quant_temp,
+                          samples,
+                          s = s,
+                          RT_correction_factors = RT_correction_factors[start:end,],
+                          mz_correction_factors = mz_correction_factors[start:end,],
+                          features_intensity_sample = features_intensity[start:end,s,drop=F],
+                          Ioncount_sample = Ioncount_feature_sample_matrix[start:end,s,drop=F],
+                          feature_with_background_intensity_sample = feature_with_background_intensity[start:end,s,drop=F],
+                          Ioncount_with_background_sample = Ioncount_feature_with_background_intensity[start:end,s,drop=F],
+                          peak_selected_sample = peak_selected[start:end,s,drop=F],
+                          delta_mz = delta_mz,
+                          delta_rt = delta_rt,
+                          peak_min_ion_count=peak_min_ion_count,
+                          chunk=chunk,
+                          num_chunks=num_chunks)
+          }
+        stopCluster(cl)
+
+        ###merge results from all threads
+        for(c in 1:length(samples))
+        {
+          set(features_intensity,as.integer(start:end),c,res[[c]]$features_intensity_sample)
+          set(Ioncount_feature_sample_matrix,as.integer(start:end),c,res[[c]]$Ioncount_sample)
+          set(feature_with_background_intensity,as.integer(start:end),c,res[[c]]$feature_with_background_intensity_sample)
+          set(Ioncount_feature_with_background_intensity,as.integer(start:end),c,res[[c]]$Ioncount_with_background_sample)
+          set(peak_selected,as.integer(start:end),c,res[[c]]$peak_selected_sample)
+        }
+
+      }
+
+      rownames(peak_selected) <- features$Feature_name
+    }else
+    {
+      peak_selected <- NULL
+    }
+
+    rownames(features_intensity) <- features$Feature_name
+    rownames(Ioncount_feature_sample_matrix) <- features$Feature_name
+    rownames(feature_with_background_intensity) <- features$Feature_name
+    rownames(Ioncount_feature_with_background_intensity) <- features$Feature_name
+
+    setwd(path_to_features)
+    dir.create("Temporary_files")
+    setwd(paste(path_to_features,"\\Temporary_files",sep=""))
+    print("Save peak detection and selection results")
+    save(features,
+         features_intensity,
+         Ioncount_feature_sample_matrix,
+         feature_with_background_intensity,
+         Ioncount_feature_with_background_intensity,
+         peak_selected,
+         peak_quant,
+         QC_data,
+         path_to_features,
+         path_to_MaxQ_output,
+         samples,
+         delta_rt,
+         delta_mz,
+         peak_min_ion_count,
+         num_peaks_store,
+         RT_calibration,
+         mz_calibration,
+         abundance_estimation_correction,
+         Quant_pVal_cut,
+         alignment_variability_score_cutoff,
+         alignment_scores_cutoff,
+         mono_iso_alignment_cutoff,
+         calc_peptide_LFQ,
+         calc_protein_LFQ,
+         MassSpec_mode,
+         multiplicity,
+         file = "Quantification_raw_results.RData")
+
+    crap <- gc(F)
+  }
 
   ###read previously generated outputs
   #load("Quantification_raw_results.RData")
@@ -6146,6 +6583,21 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   ###feature with significant score here should be potentially excluded
   Variability_alignment_scoring <- function(features,peaks,delta_rt,delta_mz,alignment_variability_score_cutoff=0.05,plot=T)
   {
+    #check in which quant mode ... LFQ or SILAC
+    if(any(grepl("_Channel_light|_Channel_medium|_Channel_heavy",peaks$sample)))
+    {
+      if(any(grepl("_Channel_medium",peaks$sample)))
+      {
+        multiplicity <- 3
+      }else
+      {
+        multiplicity <- 2
+      }
+    }else
+    {
+      multiplicity <- 1
+    }
+
     ###Convert z scores (vector or matrix) to pvalues
     zscore_to_pval <- function(z, alternative="greater")
     {
@@ -6167,7 +6619,18 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     temp <- peaks[which(peaks$peak == peaks$selected),]
     #calculate interquartile range per feature over samples for RT and mz
     temp_RT <- aggregate(temp$RT,by=list(Feature=temp$feature),FUN=iqr,na.rm=T)
-    temp_mz <- aggregate(temp$mz,by=list(Feature=temp$feature),FUN=iqr,na.rm=T)
+    if(multiplicity == 1)temp_mz <- aggregate(temp$mz,by=list(Feature=temp$feature),FUN=iqr,na.rm=T)
+    if(multiplicity > 1)
+    {
+      #correct observed mz by expected shift
+      mz_temp_corrfactors <- list("light" = features$m.z._shift_light[match(temp$feature,features$Feature_name)],
+                                  "medium" = features$m.z._shift_medium[match(temp$feature,features$Feature_name)],
+                                  "heavy" = features$m.z._shift_heavy[match(temp$feature,features$Feature_name)])
+      mz_temp_corrfactor <- ifelse(grepl("_Channel_light",temp$sample),mz_temp_corrfactors$light,
+                                   ifelse(grepl("_Channel_medium",temp$sample),mz_temp_corrfactors$medium,mz_temp_corrfactors$heavy))
+      temp$mz <- temp$mz - mz_temp_corrfactor
+      temp_mz <- aggregate(temp$mz,by=list(Feature=temp$feature),FUN=iqr,na.rm=T)
+    }
 
     #z score using delta RT and delta mz as sd
     temp_RT$x <- (temp_RT$x-mean(temp_RT$x,na.rm=T))/delta_rt
@@ -6213,6 +6676,38 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     temp_peaks <- peaks[which(peaks$peak == peaks$selected),]
     #order according to feature name
     temp_peaks <- temp_peaks[order(temp_peaks$feature,temp_peaks$sample),]
+
+    #check if we are looking at raw mz and if multiplicity != 1
+    if(corrected_alignment == F)
+    {
+      #check in which quant mode ... LFQ or SILAC
+      if(any(grepl("_Channel_light|_Channel_medium|_Channel_heavy",peaks$sample)))
+      {
+        if(any(grepl("_Channel_medium",peaks$sample)))
+        {
+          multiplicity <- 3
+        }else
+        {
+          multiplicity <- 2
+        }
+      }else
+      {
+        multiplicity <- 1
+      }
+
+      #if multiplicity > 1 then raw mz have to be corrected for expected mz shifts
+      if(multiplicity > 1)
+      {
+        #correct observed mz by expected shift
+        mz_temp_corrfactors <- list("light" = features$m.z._shift_light[match(temp_peaks$feature,features$Feature_name)],
+                                    "medium" = features$m.z._shift_medium[match(temp_peaks$feature,features$Feature_name)],
+                                    "heavy" = features$m.z._shift_heavy[match(temp_peaks$feature,features$Feature_name)])
+        mz_temp_corrfactor <- ifelse(grepl("_Channel_light",temp_peaks$sample),mz_temp_corrfactors$light,
+                                     ifelse(grepl("_Channel_medium",temp_peaks$sample),mz_temp_corrfactors$medium,mz_temp_corrfactors$heavy))
+        temp_peaks$mz <- temp_peaks$mz - mz_temp_corrfactor
+      }
+    }
+
     #prepare matrices which should store RT and mz of selected peaks per sample and feature
     if(corrected_alignment == T)selected_peaks_RT <- reshape(temp_peaks[,c("feature","sample","RT_correct")], idvar = "feature", timevar = "sample", direction = "wide")
     if(corrected_alignment == F)selected_peaks_RT <- reshape(temp_peaks[,c("feature","sample","RT")], idvar = "feature", timevar = "sample", direction = "wide")
@@ -6222,6 +6717,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     if(corrected_alignment == F)selected_peaks_mz <- reshape(temp_peaks[,c("feature","sample","mz")], idvar = "feature", timevar = "sample", direction = "wide")
     rownames(selected_peaks_mz) <- selected_peaks_mz$feature
     selected_peaks_mz <- selected_peaks_mz[,-1]
+
     #calculate mean and sd of RT and mz per feature
     selected_peaks_distributions_RT <- data.frame(mean=rowMeans(as.matrix(selected_peaks_RT),na.rm=T),
                                                   sd=rowSds(as.matrix(selected_peaks_RT,na.rm=T)))
@@ -6312,7 +6808,6 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
           }
           return(pval)
         }
-
 
         ###estimate expected distributions of deviations in RT and mz between M and M+1 peaks
         mean_RT_distribution <- vector("numeric",length(samples))
@@ -6421,6 +6916,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
       return(mono_iso_alignment_summary)
     }
+
     mono_iso_alignment_summary <- Mono_iso_alignment_scoring(features,samples,peaks,pval_signal_with_background_quant,delta_rt,delta_mz,mono_iso_alignment_cutoff)
   }else
   {
@@ -6428,9 +6924,9 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   }
 
   ###calculate FDR for peak selections
-  ###for that purpose we select randomly 1000 quantifications in random samples where true peak was known
+  ###for that purpose we select randomly 500 quantifications in random samples where true peak was known
   ###we check if the same peak will be selected if information about true peak location is removed
-  Peak_selection_FDR <- function(num_features=500,features,samples,peaks,path_to_features,peak_quant,feature_with_background_intensity,peak_selected,delta_mz,delta_rt,peak_min_ion_count,num_peaks_store,alignment_scores_cutoff,n_cores,peak_decision,Alignment_scoring,seed=1,plot=T)
+  Peak_selection_FDR <- function(num_features=500,features,samples,peaks,path_to_features,peak_quant,feature_with_background_intensity,peak_selected,delta_mz,delta_rt,peak_min_ion_count,num_peaks_store,alignment_scores_cutoff,n_cores,peak_decision,Alignment_scoring,seed=110519,plot=T)
   {
     if(length(which(peaks$known == 1)) >= 10)
     {
@@ -6465,6 +6961,21 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       mz_correction_models <- e$QC_data$mz_calibration_models
       RT_alignment_GAM_models <- e$QC_data$RT_calibration_GAM_models
 
+      #determine multiplicity
+      if(any(grepl("_Channel_light|_Channel_medium|_Channel_heavy",samples)))
+      {
+        if(any(grepl("_Channel_medium",samples)))
+        {
+          multiplicity <- 3
+        }else
+        {
+          multiplicity <- 2
+        }
+      }else
+      {
+        multiplicity <- 1
+      }
+
       for(s in 1:length(samples))
       {
         temp <- data.table::copy(features)
@@ -6483,6 +6994,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
         temp_data <- median_feature_properties[match(features_select,median_feature_properties$Feature),]
 
+        temp_data$Resolution <- 0
+
         temp_data <- temp_data[which(rowSums(is.na(temp_data[,c("Retention.time","m.z","Charge","Resolution")])) == 0),]
 
         if(length(select_model)>0)
@@ -6491,11 +7004,18 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
           {
             prediction <- stats::predict(mz_correction_models[[select_model]], temp_data[,-1], type = "response")
             if(any(is.na(prediction)))prediction[which(is.na(prediction))] <- 0
-
-            set(temp,as.integer(match(rownames(temp_data),rownames(temp))),as.integer(which(grepl("mz_calibration.",colnames(temp)))[s]),prediction)
+            #add expected SILAC isotope shifts
+            if(multiplicity > 1)
+            {
+              if(grepl("light",samples[s]))SILAC_label_mz_shift <- features$m.z._shift_light[temp_data$Feature]
+              if(grepl("medium",samples[s]))SILAC_label_mz_shift <- features$m.z._shift_medium[temp_data$Feature]
+              if(grepl("heavy",samples[s]))SILAC_label_mz_shift <- features$m.z._shift_heavy[temp_data$Feature]
+              prediction <- prediction + SILAC_label_mz_shift
+            }
+            set(temp,as.integer(match(rownames(temp_data),rownames(temp))),as.integer(which(colnames(temp) == paste("mz_calibration.",samples[s],sep=""))),prediction)
           }else
           {
-            set(temp,as.integer(match(rownames(temp_data),rownames(temp))),as.integer(which(grepl("mz_calibration.",colnames(temp)))[s]),0)
+            set(temp,as.integer(match(rownames(temp_data),rownames(temp))),as.integer(which(colnames(temp) == paste("mz_calibration.",samples[s],sep=""))),0)
           }
         }else
         {
@@ -6507,11 +7027,11 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
         {
           prediction <- stats::predict(RT_alignment_GAM_models[[select_model]], data.frame(x = temp$RT))
           if(any(is.na(prediction)))prediction[which(is.na(prediction))] <- 0
-          set(temp,as.integer(1:nrow(temp)),as.integer(which(grepl("RT_calibration.",colnames(temp)))[s]),prediction)
+          set(temp,as.integer(1:nrow(temp)),as.integer(which(colnames(temp) == paste("RT_calibration.",samples[s],sep=""))),prediction)
 
         }else
         {
-          set(temp,as.integer(1:nrow(temp)),as.integer(which(grepl("RT_calibration.",colnames(temp)))[s]),0)
+          set(temp,as.integer(1:nrow(temp)),as.integer(which(colnames(temp) == paste("RT_calibration.",samples[s],sep=""))),0)
         }
 
         features_select_FDR[[s]] <- temp
@@ -6746,7 +7266,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
         # abline(h=5,lty=2,col="red")
 
         ylim <- c(0,ifelse(max(Large_Intensity_delta_FDR,na.rm=T)<5,5,max(Large_Intensity_delta_FDR,na.rm=T)))
-        p <- Barplots(Large_Intensity_delta_FDR,AvgLine = T,digits_average = 1,Name = samples,xlab = "",ylab="FDR [%]",main = "Peak selection FDR - > 2-fold intensity difference",shownumbers = F,ylim=ylim)
+        p <- Barplots(Large_Intensity_delta_FDR,AvgLine = T,digits_average = 1,Name = samples,xlab = "",ylab="FDR [%]",main = paste("Peak selection FDR - > 2-fold intensity difference\nBased on n=",num_features," random draws",sep=""),shownumbers = F,ylim=ylim)
         abline(h=5,lty=2,col="red")
 
       }
@@ -6766,7 +7286,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
   }
 
-  FDR_peak_selection <- Peak_selection_FDR(num_features=500,features,samples,peaks,path_to_features,peak_quant,feature_with_background_intensity,peak_selected,delta_mz,delta_rt,peak_min_ion_count,num_peaks_store,alignment_scores_cutoff,n_cores,peak_decision,Alignment_scoring,seed=1,plot=T)
+  FDR_peak_selection <- Peak_selection_FDR(num_features=500,features,samples,peaks,path_to_features,peak_quant,feature_with_background_intensity,peak_selected,delta_mz,delta_rt,peak_min_ion_count,num_peaks_store,alignment_scores_cutoff,n_cores,peak_decision,Alignment_scoring,plot=T)
 
   QC_data$FDR_peak_selection <- FDR_peak_selection
 
@@ -6781,96 +7301,96 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   dev.off()
 
   ###function to plot peak selections
-  Plot_feature_quantification <- function(path_to_graph_data,features,selected_feature,samples,peaks,num_peaks_store)
-  {
-    e <- new.env()
-
-    max <- length(samples)
-    pb <- winProgressBar(title = "Plot peak selections per sample",label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
-    start_time <- Sys.time()
-    updatecounter <- 0
-    time_require <- 0
-
-    for(s in 1:length(samples))
-    {
-      load(paste(path_to_graph_data,"\\",samples[s],"_feature_graphs.RData",sep=""),envir=e)
-
-      max2 <- length(selected_feature)
-      pb2 <- winProgressBar(title = "Plot peak selections",label=paste( round(0/max2*100, 0),"% done"), min = 0,max = max2, width = 300)
-      start_time2 <- Sys.time()
-      updatecounter2 <- 0
-      time_require2 <- 0
-      for(f in selected_feature)
-      {
-        i <- which(selected_feature == f)
-        temp <- e$peaks_graph[[as.character(f)]]
-        if(!is.na(temp))
-        {
-          ###plot KDE
-          image(temp$kdemap,main=paste(f,"-",samples[s]),xlab="RT",ylab="m/z",xlim=c(min(temp$kdemap$x),max(temp$kdemap$x)),ylim=c(min(temp$kdemap$y),max(temp$kdemap$y)))
-          ###indicate where peaks were detected
-          text(temp$maxima_select$RT,temp$maxima_select$mz,1:nrow(temp$maxima_select),col=ifelse(temp$maxima_select$known_peak == 1,"green","black"))
-          ###expected window
-          sel <- which(features$Feature_name == f)
-          RT_expected <- features$RT[sel] + features[sel,which(grepl("RT_calibration.",colnames(features)) & grepl(samples[s],colnames(features)))]
-          RT_window_width <- features$RT_length[sel]
-          cur_RT_window <- c(RT_expected-(RT_window_width/2),RT_expected+(RT_window_width/2))
-          mz_expected <- features$m.z[sel] + features[sel,which(grepl("mz_calibration.",colnames(features)) & grepl(samples[s],colnames(features)))]
-          mz_window <- c(features$m.z_range_min[sel] + features[sel,which(grepl("mz_calibration.",colnames(features)) & grepl(samples[s],colnames(features)))],
-                         features$m.z_range_max[sel] + features[sel,which(grepl("mz_calibration.",colnames(features)) & grepl(samples[s],colnames(features)))])
-          delta_mz <- (mz_window[2]-mz_window[1])/2
-
-          rect(cur_RT_window[1],mz_window[1],cur_RT_window[2],mz_window[2],lty=2)
-          points(RT_expected,mz_expected,pch=4)
-          ###indicate which peak was selected
-          temp_selected <- peaks[which(peaks$sample == samples[s] & peaks$feature == f & peaks$peak == peaks$selected),]
-
-          if(temp_selected$peak == (num_peaks_store+1)) #selected standard window
-          {
-            rect(cur_RT_window[1],mz_window[1],cur_RT_window[2],mz_window[2],lty=2,border="blue")
-            intensity_temp <- temp$peak_intensities[nrow(temp$peak_intensities),1]
-            text(RT_expected,mz_expected-(1.1*delta_mz),round(intensity_temp,2),col="blue")
-          }else
-          {
-            rect_pos_x_1 <- temp$maxima_select$RT[temp_selected$peak]-RT_window_width/2
-            rect_pos_y_1 <- temp$maxima_select$mz[temp_selected$peak]-delta_mz
-            rect_pos_x_2 <- temp$maxima_select$RT[temp_selected$peak]+RT_window_width/2
-            rect_pos_y_2 <- temp$maxima_select$mz[temp_selected$peak]+delta_mz
-
-
-            rect(rect_pos_x_1,rect_pos_y_1,rect_pos_x_2,rect_pos_y_2,lty=2,border="blue")
-            intensity_temp <- temp$peak_intensities[temp_selected$peak,1]
-            text(temp_selected$RT,temp_selected$mz-(1.1*delta_mz),round(intensity_temp,2),col="blue")
-          }
-        }
-
-        updatecounter2 <- updatecounter2 + 1
-        if(updatecounter2 >= 1)
-        {
-          time_elapsed <- difftime(Sys.time(),start_time2,units="secs")
-          time_require2 <- (time_elapsed/(i/max2))*(1-(i/max2))
-          td <- seconds_to_period(time_require2)
-          time_require2 <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
-
-          updatecounter <- 0
-          setWinProgressBar(pb2, i, label=paste( round(i/max2*100, 0)," % done (",i,"/",max2,", Time require: ",time_require2,")",sep = ""))
-        }
-      }
-      close(pb2)
-      updatecounter <- updatecounter + 1
-      if(updatecounter >= 1)
-      {
-        time_elapsed <- difftime(Sys.time(),start_time,units="secs")
-        time_require <- (time_elapsed/(s/max))*(1-(s/max))
-        td <- seconds_to_period(time_require)
-        time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
-
-        updatecounter <- 0
-        setWinProgressBar(pb, s, label=paste( round(s/max*100, 0)," % done (",s,"/",max,", Time require: ",time_require,")",sep = ""))
-      }
-    }
-    close(pb)
-  }
+  # Plot_feature_quantification <- function(path_to_graph_data,features,selected_feature,samples,peaks,num_peaks_store)
+  # {
+  #   e <- new.env()
+  #
+  #   max <- length(samples)
+  #   pb <- winProgressBar(title = "Plot peak selections per sample",label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+  #   start_time <- Sys.time()
+  #   updatecounter <- 0
+  #   time_require <- 0
+  #
+  #   for(s in 1:length(samples))
+  #   {
+  #     load(paste(path_to_graph_data,"\\",samples[s],"_feature_graphs.RData",sep=""),envir=e)
+  #
+  #     max2 <- length(selected_feature)
+  #     pb2 <- winProgressBar(title = "Plot peak selections",label=paste( round(0/max2*100, 0),"% done"), min = 0,max = max2, width = 300)
+  #     start_time2 <- Sys.time()
+  #     updatecounter2 <- 0
+  #     time_require2 <- 0
+  #     for(f in selected_feature)
+  #     {
+  #       i <- which(selected_feature == f)
+  #       temp <- e$peaks_graph[[as.character(f)]]
+  #       if(!is.na(temp))
+  #       {
+  #         ###plot KDE
+  #         image(temp$kdemap,main=paste(f,"-",samples[s]),xlab="RT",ylab="m/z",xlim=c(min(temp$kdemap$x),max(temp$kdemap$x)),ylim=c(min(temp$kdemap$y),max(temp$kdemap$y)))
+  #         ###indicate where peaks were detected
+  #         text(temp$maxima_select$RT,temp$maxima_select$mz,1:nrow(temp$maxima_select),col=ifelse(temp$maxima_select$known_peak == 1,"green","black"))
+  #         ###expected window
+  #         sel <- which(features$Feature_name == f)
+  #         RT_expected <- features$RT[sel] + features[sel,which(grepl("RT_calibration.",colnames(features)) & grepl(samples[s],colnames(features)))]
+  #         RT_window_width <- features$RT_length[sel]
+  #         cur_RT_window <- c(RT_expected-(RT_window_width/2),RT_expected+(RT_window_width/2))
+  #         mz_expected <- features$m.z[sel] + features[sel,which(grepl("mz_calibration.",colnames(features)) & grepl(samples[s],colnames(features)))]
+  #         mz_window <- c(features$m.z_range_min[sel] + features[sel,which(grepl("mz_calibration.",colnames(features)) & grepl(samples[s],colnames(features)))],
+  #                        features$m.z_range_max[sel] + features[sel,which(grepl("mz_calibration.",colnames(features)) & grepl(samples[s],colnames(features)))])
+  #         delta_mz <- (mz_window[2]-mz_window[1])/2
+  #
+  #         rect(cur_RT_window[1],mz_window[1],cur_RT_window[2],mz_window[2],lty=2)
+  #         points(RT_expected,mz_expected,pch=4)
+  #         ###indicate which peak was selected
+  #         temp_selected <- peaks[which(peaks$sample == samples[s] & peaks$feature == f & peaks$peak == peaks$selected),]
+  #
+  #         if(temp_selected$peak == (num_peaks_store+1)) #selected standard window
+  #         {
+  #           rect(cur_RT_window[1],mz_window[1],cur_RT_window[2],mz_window[2],lty=2,border="blue")
+  #           intensity_temp <- temp$peak_intensities[nrow(temp$peak_intensities),1]
+  #           text(RT_expected,mz_expected-(1.1*delta_mz),round(intensity_temp,2),col="blue")
+  #         }else
+  #         {
+  #           rect_pos_x_1 <- temp$maxima_select$RT[temp_selected$peak]-RT_window_width/2
+  #           rect_pos_y_1 <- temp$maxima_select$mz[temp_selected$peak]-delta_mz
+  #           rect_pos_x_2 <- temp$maxima_select$RT[temp_selected$peak]+RT_window_width/2
+  #           rect_pos_y_2 <- temp$maxima_select$mz[temp_selected$peak]+delta_mz
+  #
+  #
+  #           rect(rect_pos_x_1,rect_pos_y_1,rect_pos_x_2,rect_pos_y_2,lty=2,border="blue")
+  #           intensity_temp <- temp$peak_intensities[temp_selected$peak,1]
+  #           text(temp_selected$RT,temp_selected$mz-(1.1*delta_mz),round(intensity_temp,2),col="blue")
+  #         }
+  #       }
+  #
+  #       updatecounter2 <- updatecounter2 + 1
+  #       if(updatecounter2 >= 1)
+  #       {
+  #         time_elapsed <- difftime(Sys.time(),start_time2,units="secs")
+  #         time_require2 <- (time_elapsed/(i/max2))*(1-(i/max2))
+  #         td <- seconds_to_period(time_require2)
+  #         time_require2 <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
+  #
+  #         updatecounter <- 0
+  #         setWinProgressBar(pb2, i, label=paste( round(i/max2*100, 0)," % done (",i,"/",max2,", Time require: ",time_require2,")",sep = ""))
+  #       }
+  #     }
+  #     close(pb2)
+  #     updatecounter <- updatecounter + 1
+  #     if(updatecounter >= 1)
+  #     {
+  #       time_elapsed <- difftime(Sys.time(),start_time,units="secs")
+  #       time_require <- (time_elapsed/(s/max))*(1-(s/max))
+  #       td <- seconds_to_period(time_require)
+  #       time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
+  #
+  #       updatecounter <- 0
+  #       setWinProgressBar(pb, s, label=paste( round(s/max*100, 0)," % done (",s,"/",max,", Time require: ",time_require,")",sep = ""))
+  #     }
+  #   }
+  #   close(pb)
+  # }
   #
   # f <- c("Feature_16094","Feature_27778")
   # View(peaks[which(peaks$feature%in%f & peaks$peak == peaks$selected),])
@@ -6890,6 +7410,26 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   peaks_raw <- peaks[which(peaks$peak == 6),]
   select_only_known <- which(paste(peaks_raw$sample,peaks_raw$feature) %in% paste(peaks_selected$sample,peaks_selected$feature) )
   peaks_raw <- peaks_raw[select_only_known,]
+
+  if(multiplicity > 1)
+  {
+    #correct observed mz by expected shift
+    mz_temp_corrfactors <- list("light" = features$m.z._shift_light[match(peaks_raw$feature,features$Feature_name)],
+                                "medium" = features$m.z._shift_medium[match(peaks_raw$feature,features$Feature_name)],
+                                "heavy" = features$m.z._shift_heavy[match(peaks_raw$feature,features$Feature_name)])
+    mz_temp_corrfactor <- ifelse(grepl("_Channel_light",peaks_raw$sample),mz_temp_corrfactors$light,
+                                 ifelse(grepl("_Channel_medium",peaks_raw$sample),mz_temp_corrfactors$medium,mz_temp_corrfactors$heavy))
+    peaks_raw$mz <- peaks_raw$mz - mz_temp_corrfactor
+
+
+    mz_temp_corrfactors <- list("light" = features$m.z._shift_light[match(peaks_selected$feature,features$Feature_name)],
+                                "medium" = features$m.z._shift_medium[match(peaks_selected$feature,features$Feature_name)],
+                                "heavy" = features$m.z._shift_heavy[match(peaks_selected$feature,features$Feature_name)])
+    mz_temp_corrfactor <- ifelse(grepl("_Channel_light",peaks_selected$sample),mz_temp_corrfactors$light,
+                                 ifelse(grepl("_Channel_medium",peaks_selected$sample),mz_temp_corrfactors$medium,mz_temp_corrfactors$heavy))
+    peaks_selected$mz <- peaks_selected$mz - mz_temp_corrfactor
+  }
+
   #deviation in raw data
   temp_mean_raw <- aggregate(peaks_raw[,c("RT","mz","RT_correct","mz_correct")],by=list(peaks_raw$feature),FUN=mean,na.rm=T)
   temp_sd_raw <- aggregate(peaks_raw[,c("RT","mz","RT_correct","mz_correct")],by=list(peaks_raw$feature),FUN=sd,na.rm=T)
@@ -7216,6 +7756,41 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   # write.table(Alignment_scores,paste("Alignment_scores",output_file_names_add,".txt",sep=""))
   # write.table(Quant_pvals_signal_with_background,paste("Features_quantification_pvals_signal_background",output_file_names_add,".txt",sep=""))
   #
+
+  #reorder samples if multiplicity > 1 as it should be ordered L, M, H like in MaxQ output
+  if(multiplicity > 1)
+  {
+    #get raw sample names
+    sample <- sort(unique(gsub("_Channel_light|_Channel_medium|_Channel_heavy","",colnames(features_intensity))))
+
+    #define correct order
+    if(multiplicity == 2)
+    {
+      labels <- c("_Channel_light","_Channel_heavy")
+      sample <- paste(sort(rep(sample,2)),labels,sep="")
+    }
+    if(multiplicity == 3)
+    {
+      labels <- c("_Channel_light","_Channel_medium","_Channel_heavy")
+      sample <- paste(sort(rep(sample,3)),labels,sep="")
+    }
+
+    #get numerical order for tables
+    order <- match(sample,colnames(features_intensity))
+
+    #change respective table column order
+    features_intensity <- features_intensity[,order]
+    Ioncount_feature_sample_matrix <- Ioncount_feature_sample_matrix[,order]
+    feature_with_background_intensity <- feature_with_background_intensity[,order]
+    feature_with_background_intensity_imputed <- feature_with_background_intensity_imputed[,order]
+    Ioncount_feature_with_background_intensity <- Ioncount_feature_with_background_intensity[,order]
+    peak_selected <- peak_selected[,order]
+    S2B <- S2B[,order]
+    pval_signal_with_background_quant <- pval_signal_with_background_quant[,order]
+    alignment_scores_peaks_correct <- alignment_scores_peaks_correct[,order]
+    alignment_scores_peaks_raw <- alignment_scores_peaks_raw[,order]
+    mono_iso_alignment_summary <- mono_iso_alignment_summary[,order]
+  }
 
   ###store results after filtering
   print("Save quantification results after alignment scoring and filter")
@@ -7800,7 +8375,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     ###load MaxQ peptide results
     MaxQ_peptides <- read.table(paste(path_to_MaxQ_output,"\\peptides.txt",sep=""),sep="\t",header=T)
     MaxQ_peptides <- MaxQ_peptides[-which(MaxQ_peptides$Potential.contaminant == "+" | MaxQ_peptides$Reverse == "+"),]
-    MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.",colnames(MaxQ_peptides)))]
+    if(multiplicity == 1)MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.",colnames(MaxQ_peptides)))]
+    if(multiplicity > 1)MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.[LMH]\\.",colnames(MaxQ_peptides)))]
     MaxQ_peptides_quant[MaxQ_peptides_quant==0] <- NA
     MaxQ_peptides_quant <- log2(MaxQ_peptides_quant)
     MaxQ_peptides_leading_razor <- data.frame(Sequence=MaxQ_peptides$Sequence,Leading_razor=MaxQ_peptides$Leading.razor.protein)
@@ -7905,7 +8481,6 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       cor_res <- correct_intensities(features,feature_sample_matrix_requantified = feature_with_background_intensity_imputed,pval_quant = pval_signal_with_background_quant,MaxQ_peptides_quant = MaxQ_peptides,main="Signal_Background_intensity_imputed",corr_factor = cor_res[[4]])
 
       feature_with_background_intensity_imputed <- cor_res[[1]]
-
     }
 
     ###get leading razor ID per peptide sequence
