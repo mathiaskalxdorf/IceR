@@ -467,12 +467,32 @@ convert_rawTIMS <- function(path_to_raw=NULL)
 #' @return Outputs are stored in the sub-directory Temporary_files within specified output folder. MaxQuant allpeptides.txt and evidence.txt are converted to RData files. QC plots of estimated alignment windows as well as of random forest modesl and generalized additive models are stored in a QC_plots.pdf. Relevant QC data is stored in Feature_alignment_QC_data.RData. Aligned IceR features are stored in Features_aligned_merged.txt
 align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,output_file_names_add="IceR_analysis",mz_window=NA,min_mz_window = 0.001,RT_window=NA,min_RT_window=1,min_num_ions_collapse=10,feature_mass_deviation_collapse=0.002,only_unmodified_peptides=F,sample_list=NA,remove_contaminants=T,MassSpec_mode=c("Orbitrap","TIMSToF"),IM_window=NA,min_IM_window=0.002,multiplicity=c(1,2,3),SILAC_settings=list(light=c(""),medium=c("Lys4","Arg6"),heavy=c("Lys8","Arg10")))
 {
+  # path_to_MaxQ_output <- "D:\\Arbeit\\Karim\\MaxQ"
+  # path_to_output <- "D:\\Arbeit\\Karim\\IceR_only_true_id"
+  # align_unknown=F
+  # output_file_names_add="IceR_analysis_only_true_id"
+  # mz_window=NA
+  # min_mz_window = 0.001
+  # RT_window=NA
+  # min_RT_window=1
+  # min_num_ions_collapse=10
+  # feature_mass_deviation_collapse=0.002
+  # only_unmodified_peptides=F
+  # sample_list=NA
+  # remove_contaminants=T
+  # MassSpec_mode=c("Orbitrap","TIMSToF")
+  # IM_window=NA
+  # min_IM_window=0.002
+  # multiplicity=3
+  # SILAC_settings=list(light=c(""),medium=c("Lys4","Arg6"),heavy=c("Lys8","Arg10"))
+
   options(warn=-1)
   suppressWarnings(suppressMessages(library(data.table,quietly = T)))
   suppressWarnings(suppressMessages(library(stringr,quietly = T)))
   suppressWarnings(suppressMessages(library(lubridate,quietly = T)))
   suppressWarnings(suppressMessages(library(mgcv,quietly = T)))
   suppressWarnings(suppressMessages(library(ff,quietly = T)))
+  suppressWarnings(suppressMessages(library(matrixStats,quietly = T)))
   use_mz_at_max_int_for_correction=F
 
   #check if multiplicity is 2 or 3 (e.g. SILAC samples)
@@ -553,7 +573,9 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
           if(multiplicity == 3)tempclasses["Intensity.M"] = "numeric"
           tempclasses["Intensity.H"] = "numeric"
           tempclasses["Score"] = "numeric"
-          tempclasses["Retention.Length..FWHM."] = "numeric"
+          if(any(names(tempclasses) == "PEP"))tempclasses["PEP"] = "factor"
+          if(any(colnames(temp) == "Retention.Length..FWHM.")) tempclasses["Retention.Length..FWHM."] = "numeric"
+          if(any(colnames(temp) == "Retention.length..FWHM.")) tempclasses["Retention.length..FWHM."] = "numeric"
           tempclasses[which(tempclasses == "logical" | tempclasses == "character")] <- "factor"
         }
 
@@ -618,11 +640,48 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       if(any(colnames(evidence) == "Ion.mobility.length"))colnames(evidence)[which(colnames(evidence) == "Ion.mobility.length")] <- "Ion.mobility.index.length"
       if(any(colnames(evidence) == "Number.of.scans"))colnames(evidence)[which(colnames(evidence) == "Number.of.scans")] <- "Number.of.frames"
 
-      print("Read MaxQ results finished")
+      #load msms info in case of SILAC data
+      if(multiplicity > 1)
+      {
+        temp <- read.csv(file = "msms.txt",sep='\t',nrows = 2044,header=T)
+        tempclasses = sapply(temp, class)
+        tempclasses[which(tempclasses != "factor")] <- "factor"
+        msms_save <- read.csv.ffdf(file = "msms.txt",sep='\t',VERBOSE = F,colClasses=tempclasses,next.rows = 100000)##read in data in chunks of 100000 rows
+        msms <- as.data.frame(msms_save)
 
+        if(length(which(colnames(msms) == "Labeling.state"))==0) ###possibly upper and lower case problem
+        {
+          colnames(msms)[which(colnames(msms) == "Labeling.State")] <- "Labeling.state"
+        }
+
+        #match msms to evidence table
+        match_order <- match(evidence$Best.MS.MS,msms$id)
+
+        #add labeling state info from msms to evidence table
+        evidence$Labeling.State <- as.numeric(as.character(msms$Labeling.state))[match_order]
+      }
+
+
+      print("Read MaxQ results finished")
 
       if(MassSpec_mode == "Orbitrap")
       {
+        #in case of SILAC only use true identification per SILAC state as given (intensities could be requantified by MaxQ if setting enabled)
+        if(multiplicity > 1)
+        {
+          #remove unclear labeling states
+          sel <- which(is.na(evidence$Labeling.State) | evidence$Labeling.State == -1)
+          if(length(sel) > 0)evidence <- evidence[-sel,]
+
+          #remove intensities of silac channels which were not directly identified
+          evidence$Intensity.H[which(evidence$Labeling.State == 0)] <- NA
+          evidence$Intensity.M[which(evidence$Labeling.State == 0)] <- NA
+          evidence$Intensity.H[which(evidence$Labeling.State == 1)] <- NA
+          evidence$Intensity.L[which(evidence$Labeling.State == 1)] <- NA
+          evidence$Intensity.L[which(evidence$Labeling.State == 2)] <- NA
+          evidence$Intensity.M[which(evidence$Labeling.State == 2)] <- NA
+        }
+
         add_data <- as.data.frame(matrix(ncol=ncol(allpeptides),nrow=nrow(evidence),NA))
         colnames(add_data) <- colnames(allpeptides)
         match_col_names <- match(colnames(allpeptides),colnames(evidence))
@@ -678,6 +737,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
         allpeptides$Intensity.M[allpeptides$Intensity.M == 0] <- NA
         allpeptides$Intensity.H[allpeptides$Intensity.H == 0] <- NA
 
+        #Now expand every evidence row to an individual row per SILAC state where intensity != NA
         for(s in unique(allpeptides$Raw.file))
         {
           for(label in names(SILAC_settings))
@@ -722,7 +782,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
             #further filter for features with at least one of each required AA otherwise L, M and H channels can not be distinguished
             if(require_lys == T & require_arg == T)
             {
-              temp <- temp[which(!is.na(temp$Lys_count) & temp$Lys_count > 0 & !is.na(temp$Arg_count) & temp$Arg_count > 0),]
+              temp <- temp[which(!is.na(temp$Lys_count) & temp$Lys_count > 0 | !is.na(temp$Arg_count) & temp$Arg_count > 0),]
             }else if(require_lys == T)
             {
               temp <- temp[which(!is.na(temp$Lys_count) & temp$Lys_count > 0),]
@@ -943,14 +1003,12 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
         evidence <- cbind(evidence,add)
       }
 
-      ####
       ###finally save prepared data
       setwd(path_to_output)
 
       save(allpeptides,file = "Temporary_files\\allPeptides.RData")
       save(evidence,file = "Temporary_files\\evidence.RData")
     }
-
 
     QC_data <- list() ##here relevant qc data is stored and finally saved as RData which can be used for re-generating plots
 
@@ -1077,6 +1135,11 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
           sub1 <- sub[which(sub$Charge == c & sub$Modifications == m),]
           count_features <- count_features + 1
 
+          # if(multiplicity > 1)
+          # {
+          #   sub1$m.z <- sub1$Max.intensity.m.z.0 - (sub1$m.z_SILAC-sub1$m.z)
+          # }
+
           median_RT <- median(sub1$Retention.time,na.rm=T)
           remove <- which(sub1$Retention.time > median_RT + outlier_RT_deviation)
           if(length(remove)>0)sub1 <- sub1[-remove,]
@@ -1126,7 +1189,8 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
     windows <- windows[1:count_features,]
 
-    boxplot(windows$sd_m.z,main="Standard deviation of peptide features m/z",outline=F)
+    #generate some QC plots indicating variation of RT and m/z (and IM) for identified features across samples
+    if(multiplicity == 1)boxplot(windows$sd_m.z,main="Standard deviation of peptide features m/z",outline=F)
     boxplot(windows$sd_RT,main="Standard deviation of peptide features RT",outline=F)
     if(MassSpec_mode == "TIMSToF")boxplot(windows$sd_IM,main="Standard deviation of peptide features inverse K0",outline=F)
     if(is.na(mz_window))
@@ -1290,24 +1354,32 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
     for(i in 1:max(allpeptides$Charge))
     {
-      allpeptides_frag[[i]] <- allpeptides[which(allpeptides$Charge == i),]
-      min_max_mz <- c(floor(min(allpeptides_frag[[i]]$m.z)),ceiling(max(allpeptides_frag[[i]]$m.z)))
-      indices <- matrix(ncol=4,nrow=min_max_mz[2]-min_max_mz[1])
-      indices[,1] <- min_max_mz[1]:(min_max_mz[2]-1)
-      indices[,2] <- (min_max_mz[1]+1):(min_max_mz[2])
-      for(j in 1:nrow(indices))
+      if(length(which(allpeptides$Charge == i))>0)
       {
-        indx <- which(allpeptides_frag[[i]]$m.z >= indices[j,1] & allpeptides_frag[[i]]$m.z <= indices[j,2])
-        if(length(indx) > 0)
+        allpeptides_frag[[i]] <- allpeptides[which(allpeptides$Charge == i),]
+        min_max_mz <- c(floor(min(allpeptides_frag[[i]]$m.z)),ceiling(max(allpeptides_frag[[i]]$m.z)))
+        indices <- matrix(ncol=4,nrow=min_max_mz[2]-min_max_mz[1])
+        indices[,1] <- min_max_mz[1]:(min_max_mz[2]-1)
+        indices[,2] <- (min_max_mz[1]+1):(min_max_mz[2])
+        for(j in 1:nrow(indices))
         {
-          indices[j,3:4] <- c(min(indx),max(indx))
-        }else
-        {
-          indices[j,3:4] <- c(NA,NA)
-        }
+          indx <- which(allpeptides_frag[[i]]$m.z >= indices[j,1] & allpeptides_frag[[i]]$m.z <= indices[j,2])
+          if(length(indx) > 0)
+          {
+            indices[j,3:4] <- c(min(indx),max(indx))
+          }else
+          {
+            indices[j,3:4] <- c(NA,NA)
+          }
 
+        }
+        allpeptides_frag_indices_per_mz_window[[i]] <- indices
+      }else
+      {
+        allpeptides_frag[[i]] <- NA
+        allpeptides_frag_indices_per_mz_window[[i]] <- NA
       }
-      allpeptides_frag_indices_per_mz_window[[i]] <- indices
+
     }
     rm(indices)
     gc()
@@ -2498,7 +2570,6 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
         evidence <- evidence[which(evidence$Raw.file %in% gsub("_Channel_heavy|_Channel_light|_Channel_medium","",sample_list)),]
       }
 
-
       ###evidence_peptides
       evidence_peptides <- unique(evidence$Sequence)
       evidence_peptides_indices <- vector(mode = "list", length = length(evidence_peptides))
@@ -2623,6 +2694,8 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
       }
       close(pb)
+
+      RT_calibration_vals_save <- RT_calibration_vals
 
       if(mz_calibration == T & use_mz_at_max_int_for_correction==F)
       {
@@ -2872,6 +2945,9 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
       if(RT_calibration == T)
       {
+        plot(1, type="n", axes=F, xlab="", ylab="")
+        text(1,1,"RT GAM fitting - First round of estimation")
+
         RT_alignment_GAM_models <- list()
         ###fit GAM and predict per sample.
         for(c in 1:ncol(RT_calibration_vals))
@@ -2899,17 +2975,65 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
             ###use GAM to predict RT correction for missing features in current sample
             selection <- which(is.na(RT_calibration_vals[,c]))
             RT_calibration_vals[,c][selection] <- y_pred[selection]
-          }else ###not enough observations ... skiÃ¼
+
+          }else ###not enough observations ... skip
           {
             print(paste(sample_list[c],"- Not enough peptide observations for RT-GAM fitting..."))
           }
-
         }
-        # ###use median of RT_calibration per sample for NAs
-        # for(c in 1:ncol(RT_calibration_vals))
-        # {
-        #   RT_calibration_vals[,c][is.na(RT_calibration_vals[,c])] <- median(RT_calibration_vals[,c],na.rm=T)
-        # }
+        QC_data[["RT_calibration_GAM_models"]] <- RT_alignment_GAM_models
+
+        #perform a second round of RT calibration
+        #currently it is possible that several features are observed only in a few samples
+        #hence observed median RT is driven by these few samples
+        #based on GAM models adjust median feature RT and rerun fitting
+        expected_raw_RTs <- features$RT + RT_calibration_vals
+        expected_raw_RTs[is.na(expected_raw_RTs)] <- 0
+
+        delta_rt_temp <- features$RT_range_max-features$RT
+        features$RT <- rowMedians(as.matrix(expected_raw_RTs),na.rm=T)
+        features$RT_range_min <- features$RT - delta_rt_temp
+        features$RT_range_max <- features$RT + delta_rt_temp
+
+        #restart RT calibration
+        #grap known RT once again
+        RT_calibration_vals <- RT_calibration_vals_save
+
+        plot(1, type="n", axes=F, xlab="", ylab="")
+        text(1,1,"RT GAM fitting - Second round of estimation")
+
+        RT_alignment_GAM_models <- list()
+        ###fit GAM and predict per sample.
+        for(c in 1:ncol(RT_calibration_vals))
+        {
+          x <- features$RT[which(RT_calibration_vals[,c] != 0)]
+          y <- RT_calibration_vals[,c][which(RT_calibration_vals[,c] != 0)]
+          if(length(x) > 10) ###require at least 500 data points to perform fitting
+          {
+            ##try to fit an average generalised additive model to determine a RT dependent calibration curve
+            gam <- gam(y ~ s(x), method = "REML")
+            RT_alignment_GAM_models[[c]] <- gam
+            x_pred <- seq(min(features$RT,na.rm=T), max(features$RT,na.rm=T), length.out = nrow(features))
+            y_pred <- predict(gam, data.frame(x = x_pred))
+            lim_stats <- boxplot.stats(y_pred)
+            delta_y <- lim_stats$stats[4] - lim_stats$stats[2]
+            ylim <- c(-max(abs(c(lim_stats$stats[2],lim_stats$stats[4])))-delta_y,max(abs(c(lim_stats$stats[2],lim_stats$stats[4])))+delta_y)
+            if(ylim[2] < 2)ylim <- c(-2,2)
+            smoothScatter(x,y,ylab="Observed RT calibration",main=sample_list[c],xlab="RT [min]",ylim=ylim)
+            lines(x_pred,y_pred,col="red")
+            legend("topright",legend="GAM",lty=1,col="red")
+
+            ##predict RT correction for all features in current sample
+            y_pred <- predict(gam, data.frame(x = features$RT))
+
+            ###use GAM to predict RT correction for missing features in current sample
+            selection <- which(is.na(RT_calibration_vals[,c]))
+            RT_calibration_vals[,c][selection] <- y_pred[selection]
+          }else ###not enough observations ... skip
+          {
+            print(paste(sample_list[c],"- Not enough peptide observations for RT-GAM fitting..."))
+          }
+        }
         QC_data[["RT_calibration_GAM_models"]] <- RT_alignment_GAM_models
       }
       RT_calibration_vals[is.na(RT_calibration_vals)] <- 0
@@ -6980,61 +7104,66 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       {
         temp <- data.table::copy(features)
         temp <- temp[selection_feature_per_sample[[s]],]
-
-        #remove observed RT and mz
-        obs_rt <- (str_split(temp$Observed_RT,";",simplify = T))
-        obs_rt[,s] <- "NA"
-        obs_mz <- (str_split(temp$Observed_mz,";",simplify = T))
-        obs_mz[,s] <- "NA"
-        temp$Observed_mz <- apply(obs_mz,1,paste,collapse = ";")
-        #exchange mz calibration with prediction from model
-        select_model <- which(names(mz_correction_models) == samples[s])
-
-        features_select <- selection_feature_per_sample[[s]]
-
-        temp_data <- median_feature_properties[match(features_select,median_feature_properties$Feature),]
-
-        temp_data$Resolution <- 0
-
-        temp_data <- temp_data[which(rowSums(is.na(temp_data[,c("Retention.time","m.z","Charge","Resolution")])) == 0),]
-
-        if(length(select_model)>0)
+        if(nrow(temp)>10)
         {
-          if(nrow(temp_data) > 0)
+          #remove observed RT and mz
+          obs_rt <- (str_split(temp$Observed_RT,";",simplify = T))
+          obs_rt[,s] <- "NA"
+          obs_mz <- (str_split(temp$Observed_mz,";",simplify = T))
+          obs_mz[,s] <- "NA"
+          temp$Observed_mz <- apply(obs_mz,1,paste,collapse = ";")
+          #exchange mz calibration with prediction from model
+          select_model <- which(names(mz_correction_models) == samples[s])
+
+          features_select <- selection_feature_per_sample[[s]]
+
+          temp_data <- median_feature_properties[match(features_select,median_feature_properties$Feature),]
+
+          temp_data$Resolution <- 0
+
+          temp_data <- temp_data[which(rowSums(is.na(temp_data[,c("Retention.time","m.z","Charge","Resolution")])) == 0),]
+
+          if(length(select_model)>0)
           {
-            prediction <- stats::predict(mz_correction_models[[select_model]], temp_data[,-1], type = "response")
-            if(any(is.na(prediction)))prediction[which(is.na(prediction))] <- 0
-            #add expected SILAC isotope shifts
-            if(multiplicity > 1)
+            if(nrow(temp_data) > 0)
             {
-              if(grepl("light",samples[s]))SILAC_label_mz_shift <- features$m.z._shift_light[temp_data$Feature]
-              if(grepl("medium",samples[s]))SILAC_label_mz_shift <- features$m.z._shift_medium[temp_data$Feature]
-              if(grepl("heavy",samples[s]))SILAC_label_mz_shift <- features$m.z._shift_heavy[temp_data$Feature]
-              prediction <- prediction + SILAC_label_mz_shift
+              prediction <- stats::predict(mz_correction_models[[select_model]], temp_data[,-1], type = "response")
+              if(any(is.na(prediction)))prediction[which(is.na(prediction))] <- 0
+              #add expected SILAC isotope shifts
+              if(multiplicity > 1)
+              {
+                if(grepl("light",samples[s]))SILAC_label_mz_shift <- features$m.z._shift_light[temp_data$Feature]
+                if(grepl("medium",samples[s]))SILAC_label_mz_shift <- features$m.z._shift_medium[temp_data$Feature]
+                if(grepl("heavy",samples[s]))SILAC_label_mz_shift <- features$m.z._shift_heavy[temp_data$Feature]
+                prediction <- prediction + SILAC_label_mz_shift
+              }
+              set(temp,as.integer(match(rownames(temp_data),rownames(temp))),as.integer(which(colnames(temp) == paste("mz_calibration.",samples[s],sep=""))),prediction)
+            }else
+            {
+              set(temp,as.integer(match(rownames(temp_data),rownames(temp))),as.integer(which(colnames(temp) == paste("mz_calibration.",samples[s],sep=""))),0)
             }
-            set(temp,as.integer(match(rownames(temp_data),rownames(temp))),as.integer(which(colnames(temp) == paste("mz_calibration.",samples[s],sep=""))),prediction)
           }else
           {
-            set(temp,as.integer(match(rownames(temp_data),rownames(temp))),as.integer(which(colnames(temp) == paste("mz_calibration.",samples[s],sep=""))),0)
+            set(temp,as.integer(match(rownames(temp_data),rownames(temp))),as.integer(which(grepl("mz_calibration.",colnames(temp)))[s]),0)
           }
+          #exchange RT calibration with prediction from model
+          select_model <- s
+          if(!is.null(RT_alignment_GAM_models[[select_model]]))
+          {
+            prediction <- stats::predict(RT_alignment_GAM_models[[select_model]], data.frame(x = temp$RT))
+            if(any(is.na(prediction)))prediction[which(is.na(prediction))] <- 0
+            set(temp,as.integer(1:nrow(temp)),as.integer(which(colnames(temp) == paste("RT_calibration.",samples[s],sep=""))),prediction)
+
+          }else
+          {
+            set(temp,as.integer(1:nrow(temp)),as.integer(which(colnames(temp) == paste("RT_calibration.",samples[s],sep=""))),0)
+          }
+
+          features_select_FDR[[s]] <- temp
         }else
         {
-          set(temp,as.integer(match(rownames(temp_data),rownames(temp))),as.integer(which(grepl("mz_calibration.",colnames(temp)))[s]),0)
+          features_select_FDR[[s]] <- temp
         }
-        #exchange RT calibration with prediction from model
-        select_model <- s
-        if(!is.null(RT_alignment_GAM_models[[select_model]]))
-        {
-          prediction <- stats::predict(RT_alignment_GAM_models[[select_model]], data.frame(x = temp$RT))
-          if(any(is.na(prediction)))prediction[which(is.na(prediction))] <- 0
-          set(temp,as.integer(1:nrow(temp)),as.integer(which(colnames(temp) == paste("RT_calibration.",samples[s],sep=""))),prediction)
-
-        }else
-        {
-          set(temp,as.integer(1:nrow(temp)),as.integer(which(colnames(temp) == paste("RT_calibration.",samples[s],sep=""))),0)
-        }
-
-        features_select_FDR[[s]] <- temp
       }
 
       #prepare columns containing correction information
@@ -7068,68 +7197,77 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       res <- foreach(s=1:length(samples)) %dopar%
         {
           suppressWarnings(suppressMessages(library(data.table,quietly = T)))
-          max <- 1
-          pb <- winProgressBar(title = "Evaluate peak selection FDR",label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
 
           selection_feature <- selection_feature_per_sample[[s]]
-          features_select_FDR_cur <- features_select_FDR[[s]]
-          #now perform peak decision for FDR_features and indicate if same peak was selected as before
-          peak_decision_same_without_peak_known <- vector("logical",length(selection_feature))
-
-          RT_correction_factors <- features_select_FDR_cur[,indices_RT_correction]
-          mz_correction_factors <- features_select_FDR_cur[,indices_mz_correction]
-          colnames(RT_correction_factors) <- samples
-          rownames(RT_correction_factors) <- features_select_FDR_cur$Feature_name
-          colnames(mz_correction_factors) <- samples
-          rownames(mz_correction_factors) <- features_select_FDR_cur$Feature_name
-
-          feature_with_background_intensity_select_FDR <- data.table::copy(feature_with_background_intensity)
-          peak_selected_select_FDR <- data.table::copy(peak_selected)
-
-          temp_dummy_df <-  data.table(Name=rep(0L,length(selection_feature)))
-          colnames(temp_dummy_df) <- samples[s]
-          close(pb)
-
-          peak_quant_temp <- data.table::copy(peak_quant_reduced)
-
-          for(p in 1:(num_peaks_store+1))
+          if(length(selection_feature)>0)
           {
-            for(p2 in 1:length(peak_quant_temp[[p]]))
+            max <- 1
+            pb <- winProgressBar(title = "Evaluate peak selection FDR",label=paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+
+            features_select_FDR_cur <- features_select_FDR[[s]]
+            #now perform peak decision for FDR_features and indicate if same peak was selected as before
+            peak_decision_same_without_peak_known <- vector("logical",length(selection_feature))
+
+            RT_correction_factors <- features_select_FDR_cur[,indices_RT_correction]
+            mz_correction_factors <- features_select_FDR_cur[,indices_mz_correction]
+            colnames(RT_correction_factors) <- samples
+            rownames(RT_correction_factors) <- features_select_FDR_cur$Feature_name
+            colnames(mz_correction_factors) <- samples
+            rownames(mz_correction_factors) <- features_select_FDR_cur$Feature_name
+
+            feature_with_background_intensity_select_FDR <- data.table::copy(feature_with_background_intensity)
+            peak_selected_select_FDR <- data.table::copy(peak_selected)
+
+            temp_dummy_df <-  data.table(Name=rep(0L,length(selection_feature)))
+            colnames(temp_dummy_df) <- samples[s]
+            close(pb)
+
+            peak_quant_temp <- data.table::copy(peak_quant_reduced)
+
+            for(p in 1:(num_peaks_store+1))
             {
-              peak_quant_temp[[p]][[p2]] <- peak_quant_temp[[p]][[p2]][match(selection_feature,all_selected_features),]
+              for(p2 in 1:length(peak_quant_temp[[p]]))
+              {
+                peak_quant_temp[[p]][[p2]] <- peak_quant_temp[[p]][[p2]][match(selection_feature,all_selected_features),]
+              }
             }
+
+            peak_quant_temp$Peak_1$correct_peak_with_background[,s] <- 0L
+
+            res_temp <- peak_decision(features_select = features_select_FDR_cur,
+                                      peak_quant = peak_quant_temp,
+                                      samples = samples,
+                                      s = s,
+                                      RT_correction_factors = RT_correction_factors,
+                                      mz_correction_factors = mz_correction_factors,
+                                      features_intensity_sample = temp_dummy_df,
+                                      Ioncount_sample = temp_dummy_df,
+                                      feature_with_background_intensity_sample = feature_with_background_intensity_select_FDR[selection_feature,s,drop=F],
+                                      Ioncount_with_background_sample = temp_dummy_df,
+                                      peak_selected_sample = peak_selected_select_FDR[selection_feature,s,drop=F],
+                                      delta_mz = delta_mz,
+                                      delta_rt = delta_rt,
+                                      peak_min_ion_count = peak_min_ion_count,
+                                      progress = T)
+
+            peak_decision_same_without_peak_known <- res_temp$peak_selected_sample[,1] == peak_selected[selection_feature,s]
+
+            set(feature_with_background_intensity_select_FDR,as.integer(selection_feature),as.integer(s),res_temp$feature_with_background_intensity_sample)
+            set(peak_selected_select_FDR,as.integer(selection_feature),as.integer(s),res_temp$peak_selected_sample)
+
+            names(peak_decision_same_without_peak_known) <- paste(features_select_FDR_cur$Feature_name,"_Sample_",s,sep="")
+
+            return(list(peak_decision_same_without_peak_known=peak_decision_same_without_peak_known,
+                        feature_with_background_intensity_select_FDR=feature_with_background_intensity_select_FDR,
+                        peak_selected_select_FDR=peak_selected_select_FDR))
+          }else
+          {
+            return(NULL)
           }
 
-          peak_quant_temp$Peak_1$correct_peak_with_background[,s] <- 0L
-
-          res_temp <- peak_decision(features_select = features_select_FDR_cur,
-                                    peak_quant = peak_quant_temp,
-                                    samples = samples,
-                                    s = s,
-                                    RT_correction_factors = RT_correction_factors,
-                                    mz_correction_factors = mz_correction_factors,
-                                    features_intensity_sample = temp_dummy_df,
-                                    Ioncount_sample = temp_dummy_df,
-                                    feature_with_background_intensity_sample = feature_with_background_intensity_select_FDR[selection_feature,s,drop=F],
-                                    Ioncount_with_background_sample = temp_dummy_df,
-                                    peak_selected_sample = peak_selected_select_FDR[selection_feature,s,drop=F],
-                                    delta_mz = delta_mz,
-                                    delta_rt = delta_rt,
-                                    peak_min_ion_count = peak_min_ion_count,
-                                    progress = T)
-
-          peak_decision_same_without_peak_known <- res_temp$peak_selected_sample[,1] == peak_selected[selection_feature,s]
-
-          set(feature_with_background_intensity_select_FDR,as.integer(selection_feature),as.integer(s),res_temp$feature_with_background_intensity_sample)
-          set(peak_selected_select_FDR,as.integer(selection_feature),as.integer(s),res_temp$peak_selected_sample)
-
-          names(peak_decision_same_without_peak_known) <- paste(features_select_FDR_cur$Feature_name,"_Sample_",s,sep="")
-
-          return(list(peak_decision_same_without_peak_known=peak_decision_same_without_peak_known,
-                      feature_with_background_intensity_select_FDR=feature_with_background_intensity_select_FDR,
-                      peak_selected_select_FDR=peak_selected_select_FDR))
         }
       stopCluster(cl)
+
 
       #determine how many false selections show large intensity difference and would not be removed by alignment scoring
       results_peak_selection_FDR_all <- list()
@@ -7141,89 +7279,96 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
       for(s in 1:length(samples))
       {
-        peak_decision_same_without_peak_known <- res[[s]]$peak_decision_same_without_peak_known
-        peak_selected_select_FDR <- res[[s]]$peak_selected_select_FDR
-        feature_with_background_intensity_select_FDR <- res[[s]]$feature_with_background_intensity_select_FDR
-        selection_feature <- selection_feature_per_sample[[s]]
-        if(length(which(peak_decision_same_without_peak_known == F))>0L)
+        if(!is.null(res[[s]]))
         {
-          selections_all <- 1:length(peak_decision_same_without_peak_known)
-
-          #compare quantification differences for all tests
-          compare_quant_results_for_wrong_decisions <- as.data.frame(matrix(ncol=2,nrow=length(selections_all)))
-          colnames(compare_quant_results_for_wrong_decisions) <- c("correct","wrong")
-          rownames(compare_quant_results_for_wrong_decisions) <- features_select_FDR[[s]]$Feature_name[selections_all]
-          compare_quant_results_for_wrong_decisions$correct <- as.numeric(compare_quant_results_for_wrong_decisions$correct)
-          compare_quant_results_for_wrong_decisions$wrong <- as.numeric(compare_quant_results_for_wrong_decisions$wrong)
-          for(i in selections_all)
+          peak_decision_same_without_peak_known <- res[[s]]$peak_decision_same_without_peak_known
+          peak_selected_select_FDR <- res[[s]]$peak_selected_select_FDR
+          feature_with_background_intensity_select_FDR <- res[[s]]$feature_with_background_intensity_select_FDR
+          selection_feature <- selection_feature_per_sample[[s]]
+          if(length(which(peak_decision_same_without_peak_known == F))>0L)
           {
-            ind <- i
-            set(compare_quant_results_for_wrong_decisions,as.integer(ind),as.integer(1:2),list(log2(10^feature_with_background_intensity_select_FDR[selection_feature[i],s]),
-                                                                                               log2(10^feature_with_background_intensity[selection_feature[i],s])))
-          }
-          ##compare intensities of unbiased peak selection and correct peak
-          #determine distribution of quantification deviations between correct and unbiased selected peak
-          if(plot==T)
+            selections_all <- 1:length(peak_decision_same_without_peak_known)
+
+            #compare quantification differences for all tests
+            compare_quant_results_for_wrong_decisions <- as.data.frame(matrix(ncol=2,nrow=length(selections_all)))
+            colnames(compare_quant_results_for_wrong_decisions) <- c("correct","wrong")
+            rownames(compare_quant_results_for_wrong_decisions) <- features_select_FDR[[s]]$Feature_name[selections_all]
+            compare_quant_results_for_wrong_decisions$correct <- as.numeric(compare_quant_results_for_wrong_decisions$correct)
+            compare_quant_results_for_wrong_decisions$wrong <- as.numeric(compare_quant_results_for_wrong_decisions$wrong)
+            for(i in selections_all)
+            {
+              ind <- i
+              set(compare_quant_results_for_wrong_decisions,as.integer(ind),as.integer(1:2),list(log2(10^feature_with_background_intensity_select_FDR[selection_feature[i],s]),
+                                                                                                 log2(10^feature_with_background_intensity[selection_feature[i],s])))
+            }
+            ##compare intensities of unbiased peak selection and correct peak
+            #determine distribution of quantification deviations between correct and unbiased selected peak
+            if(plot==T)
+            {
+              # plot(density(compare_quant_results_for_wrong_decisions$wrong-compare_quant_results_for_wrong_decisions$correct,na.rm=T),xlab="Intensity-masked / Intensity-true, log2",main=paste(samples[s],"- Deviation in selected peak quantification"))
+              # abline(v=0)
+              # abline(v=-1,lty=2,col="red")
+              # abline(v=1,lty=2,col="red")
+
+              plot(compare_quant_results_for_wrong_decisions$correct,compare_quant_results_for_wrong_decisions$wrong,xlab="True peak quantification, log2",ylab="Masked peak quantification, log2",main=paste(samples[s],"- Error in quantification"))
+              abline(a=0,b=1)
+              abline(a=1,b=1,lty=2,col="red")
+              abline(a=-1,b=1,lty=2,col="red")
+            }
+
+            #how many show deviation > 2 fold
+            wrong_peak_intensity_outlier <- abs(compare_quant_results_for_wrong_decisions$wrong-compare_quant_results_for_wrong_decisions$correct) > 1
+
+            #finally visualize results
+            freq <- plyr::count(peak_decision_same_without_peak_known)
+            if(length(which(freq$x == F)) == 0)
+            {
+              freq <- rbind(freq,data.frame(x=F,freq=0))
+            }
+            if(length(which(freq$x == T)) == 0)
+            {
+              freq <- rbind(freq,data.frame(x=T,freq=0))
+            }
+            freq$rel <- freq$freq/sum(freq$freq)*100
+
+            plot_data <- c(freq$rel[which(freq$x==F)],
+                           length(which(wrong_peak_intensity_outlier == T))/sum(freq$freq)*100)
+            names(plot_data) <- c("Total",">2-fold intensity difference")
+
+            results_peak_selection_FDR <- list(peak_decision_same_without_peak_known=peak_decision_same_without_peak_known,
+                                               compare_quant_results_for_wrong_decisions=compare_quant_results_for_wrong_decisions,
+                                               wrong_peak_intensity_outlier=wrong_peak_intensity_outlier,
+                                               plot_data=plot_data)
+
+          }else
           {
-            # plot(density(compare_quant_results_for_wrong_decisions$wrong-compare_quant_results_for_wrong_decisions$correct,na.rm=T),xlab="Intensity-masked / Intensity-true, log2",main=paste(samples[s],"- Deviation in selected peak quantification"))
-            # abline(v=0)
-            # abline(v=-1,lty=2,col="red")
-            # abline(v=1,lty=2,col="red")
+            freq <- plyr::count(peak_decision_same_without_peak_known)
+            if(length(which(freq$x == F)) == 0)
+            {
+              freq <- rbind(freq,data.frame(x=F,freq=0))
+            }
+            if(length(which(freq$x == T)) == 0)
+            {
+              freq <- rbind(freq,data.frame(x=T,freq=0))
+            }
+            freq$rel <- freq$freq/sum(freq$freq)*100
 
-            plot(compare_quant_results_for_wrong_decisions$correct,compare_quant_results_for_wrong_decisions$wrong,xlab="True peak quantification, log2",ylab="Masked peak quantification, log2",main=paste(samples[s],"- Error in quantification"))
-            abline(a=0,b=1)
-            abline(a=1,b=1,lty=2,col="red")
-            abline(a=-1,b=1,lty=2,col="red")
+            plot_data <- c(freq$rel[which(freq$x==F)],
+                           0/sum(freq$freq)*100)
+            names(plot_data) <- c("Total",">2-fold intensity difference")
+
+
+            results_peak_selection_FDR <- list(peak_decision_same_without_peak_known=peak_decision_same_without_peak_known,
+                                               compare_quant_results_for_wrong_decisions=NULL,
+                                               wrong_peak_intensity_outlier=NULL,
+                                               plot_data=plot_data)
           }
-
-          #how many show deviation > 2 fold
-          wrong_peak_intensity_outlier <- abs(compare_quant_results_for_wrong_decisions$wrong-compare_quant_results_for_wrong_decisions$correct) > 1
-
-          #finally visualize results
-          freq <- plyr::count(peak_decision_same_without_peak_known)
-          if(length(which(freq$x == F)) == 0)
-          {
-            freq <- rbind(freq,data.frame(x=F,freq=0))
-          }
-          if(length(which(freq$x == T)) == 0)
-          {
-            freq <- rbind(freq,data.frame(x=T,freq=0))
-          }
-          freq$rel <- freq$freq/sum(freq$freq)*100
-
-          plot_data <- c(freq$rel[which(freq$x==F)],
-                         length(which(wrong_peak_intensity_outlier == T))/sum(freq$freq)*100)
-          names(plot_data) <- c("Total",">2-fold intensity difference")
-
-          results_peak_selection_FDR <- list(peak_decision_same_without_peak_known=peak_decision_same_without_peak_known,
-                                             compare_quant_results_for_wrong_decisions=compare_quant_results_for_wrong_decisions,
-                                             wrong_peak_intensity_outlier=wrong_peak_intensity_outlier,
-                                             plot_data=plot_data)
-
+          results_peak_selection_FDR_all[[s]] <- results_peak_selection_FDR
         }else
         {
-          freq <- plyr::count(peak_decision_same_without_peak_known)
-          if(length(which(freq$x == F)) == 0)
-          {
-            freq <- rbind(freq,data.frame(x=F,freq=0))
-          }
-          if(length(which(freq$x == T)) == 0)
-          {
-            freq <- rbind(freq,data.frame(x=T,freq=0))
-          }
-          freq$rel <- freq$freq/sum(freq$freq)*100
-
-          plot_data <- c(freq$rel[which(freq$x==F)],
-                         0/sum(freq$freq)*100)
-          names(plot_data) <- c("Total",">2-fold intensity difference")
-
-
-          results_peak_selection_FDR <- list(peak_decision_same_without_peak_known=peak_decision_same_without_peak_known,
-                                             compare_quant_results_for_wrong_decisions=NULL,
-                                             wrong_peak_intensity_outlier=NULL,
-                                             plot_data=plot_data)
+          results_peak_selection_FDR_all[[s]] <- NULL
         }
-        results_peak_selection_FDR_all[[s]] <- results_peak_selection_FDR
+
 
         updatecounter <- updatecounter + 1
         if(updatecounter >= 1)
