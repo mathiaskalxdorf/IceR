@@ -404,7 +404,7 @@ run_all_processes <- function(settings_list)
     sample_list_process <- sample_list[which(!grepl("Library|Lib",sample_list))]
     Raw_files <- data.frame(Raw_files=sample_list,Requantified=ifelse(sample_list %in% sample_list_process,T,F))
 
-    SaveExcel(list(Parameters=Parameters,Raw_files=Raw_files),File = paste(path_to_output,"\\Parameters.xlsx",sep=""))
+    SaveExcel(list(Parameters=Parameters,Raw_files=Raw_files),File = paste(path_to_output,"/Parameters.xlsx",sep=""))
 
     print(paste(Sys.time(),"Preparation finished"))
 
@@ -489,7 +489,7 @@ run_all_processes <- function(settings_list)
       setProgress(cur_step,message="Add potentially missed peptide features")
       add_missed_peptides(path_to_features=path_to_output,
                           feature_table_file_name=paste("Features_aligned_merged_",settings_list$analysis_name,".txt",sep=""),
-                          path_to_fasta=paste(path_to_MaxQ_output,"\\Search_DB.fasta",sep=""))
+                          path_to_fasta=paste(path_to_MaxQ_output,"/Search_DB.fasta",sep=""))
       print(paste(Sys.time(),"Addition of potentially missed peptide features finished"))
     }
 
@@ -859,9 +859,9 @@ server <- function(input, output,session)
   ###Load QC data
 
   observeEvent(input$vis_qc_alignment, {
-    path_to_QC_files <- paste(global_IceR_output$datapath,"\\Temporary_files",sep="")
+    path_to_QC_files <- paste(global_IceR_output$datapath,"/Temporary_files",sep="")
 
-    load(paste(path_to_QC_files,"\\Feature_alignment_QC_data.RData",sep=""))
+    load(paste(path_to_QC_files,"/Feature_alignment_QC_data.RData",sep=""))
 
     ###first row
     output$plot_1 <- renderPlot({
@@ -921,9 +921,9 @@ server <- function(input, output,session)
   })
 
   observeEvent(input$vis_qc_quantification, {
-    path_to_QC_files <- paste(global_IceR_output$datapath,"\\Temporary_files",sep="")
+    path_to_QC_files <- paste(global_IceR_output$datapath,"/Temporary_files",sep="")
 
-    load(paste(path_to_QC_files,"\\Feature_quantification_QC_data.RData",sep=""))
+    load(paste(path_to_QC_files,"/Feature_quantification_QC_data.RData",sep=""))
 
     ###first row
     output$plot_1 <- renderPlot({
@@ -1014,7 +1014,7 @@ Visualize_RT_calibration <- function(QC_data,path_to_QC_files)
 {
   library(matrixStats)
   e1 <- new.env()
-  load(paste(path_to_QC_files,"\\Quantification_raw_results_with_scores_filtered.RData",sep=""),e1)
+  load(paste(path_to_QC_files,"/Quantification_raw_results_with_scores_filtered.RData",sep=""),e1)
 
   features <- e1$temp_results$features
 
