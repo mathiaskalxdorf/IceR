@@ -25,10 +25,7 @@ run_msconvert_raw_mzXML <- function(path_to_raw=NULL)
   raw_files <- raw_files[which(grepl("\\.raw",raw_files))]
 
   ###check which raw files still have to be converted
-  mzXMLs_available <- list.files(base::paste(path_to_raw,"\\mzXML",sep=""))
-  print(path_to_raw)
-  print(base::paste(path_to_raw,"\\mzXML",sep=""))
-  print(mzXMLs_available)
+  mzXMLs_available <- list.files(base::paste(path_to_raw,"/mzXML",sep=""))
 
   files_to_be_converted <- raw_files[which(base::gsub("\\.raw","",raw_files) %not in% base::gsub("\\.mzXML","",mzXMLs_available))]
 
@@ -130,7 +127,7 @@ mzxml_to_list <- function(path_to_mzXML,n_cores=2)
   {
     #suppressWarnings(suppressMessages(library(readMzXmlData,quietly = T)))
 
-    data <- base::paste(path_to_mzXML,"\\",mzXMLfile,sep="")
+    data <- base::paste(path_to_mzXML,"/",mzXMLfile,sep="")
     pb <- tcltk::tkProgressBar(title = "Read mzXML",label=base::paste( round(0/1*100, 0),"% done"), min = 0,max = 1, width = 300)
     ms <- readMzXmlData::readMzXmlFile(data)
     close(pb)
@@ -172,7 +169,7 @@ mzxml_to_list <- function(path_to_mzXML,n_cores=2)
       tcltk::setTkProgressBar(pb, i, label = base::paste( round(i/max*100, 0),"% done (",i,"/",max,")",sep=""))
     }
     close(pb)
-    save(dat,file=base::paste(path_to_mzXML,"\\all_ion_lists\\",sample,"_all_ions.RData",sep=""))
+    save(dat,file=base::paste(path_to_mzXML,"/all_ion_lists/",sample,"_all_ions.RData",sep=""))
   }
 
   ##Step - Extract all ions per ms1 spectra
@@ -180,9 +177,9 @@ mzxml_to_list <- function(path_to_mzXML,n_cores=2)
   mzXMLfiles <- list.files(path_to_mzXML)
   mzXMLfiles <- mzXMLfiles[which(grepl(".mzXML",mzXMLfiles))]
 
-  dir.create(base::paste(path_to_mzXML,"\\all_ion_lists",sep=""),showWarnings = F)
+  dir.create(base::paste(path_to_mzXML,"/all_ion_lists",sep=""),showWarnings = F)
 
-  setwd(base::paste(path_to_mzXML,"\\all_ion_lists",sep=""))
+  setwd(base::paste(path_to_mzXML,"/all_ion_lists",sep=""))
 
   ###check if all ion list are already available and only generate those which are required
   available_all_ion_lists <- list.files()[which(grepl("\\.RData",list.files()))]
@@ -323,7 +320,7 @@ convert_rawTIMS <- function(path_to_raw=NULL)
     close(pb)
     dir.create(base::paste(path,"all_ion_lists",sep=""),showWarnings = F)
     print(base::paste(base::gsub(".txt","",filename),": Store extracted spectra data",sep=""))
-    save(table_store,file = base::paste(path,"all_ion_lists\\",base::gsub(".txt","_all_ions.RData",filename),sep=""))
+    save(table_store,file = base::paste(path,"all_ion_lists/",base::gsub(".txt","_all_ions.RData",filename),sep=""))
 
     rm(spectra,table_store)
     gc()
@@ -349,7 +346,7 @@ convert_rawTIMS <- function(path_to_raw=NULL)
   raw_files <- raw_files[which(grepl("\\.d",raw_files))]
 
   ###check which raw files still have to be converted
-  text_available <- list.files(base::paste(path_to_raw,"\\all_ion_lists",sep=""))
+  text_available <- list.files(base::paste(path_to_raw,"/all_ion_lists",sep=""))
 
   files_to_be_converted <- raw_files[which(base::gsub("\\.d","",raw_files) %not in% base::gsub("_all_ions.RData","",text_available))]
   if(length(files_to_be_converted)>0)
@@ -545,15 +542,15 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
   setwd(path_to_output)
   dir.create("Temporary_files")
 
-  if(file.exists(base::paste("Temporary_files\\Features_aligned_merged",output_file_names_add,".txt",sep="")))
+  if(file.exists(base::paste("Temporary_files/Features_aligned_merged",output_file_names_add,".txt",sep="")))
   {
     print("Alignment already done")
   }else
   {
-    if(file.exists("Temporary_files\\allPeptides.RData"))
+    if(file.exists("Temporary_files/allPeptides.RData"))
     {
-      load("Temporary_files\\allPeptides.RData")
-      load("Temporary_files\\evidence.RData")
+      load("Temporary_files/allPeptides.RData")
+      load("Temporary_files/evidence.RData")
 
       if(is.null(sample_list))
       {
@@ -1013,13 +1010,13 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       ###finally save prepared data
       setwd(path_to_output)
 
-      save(allpeptides,file = "Temporary_files\\allPeptides.RData")
-      save(evidence,file = "Temporary_files\\evidence.RData")
+      save(allpeptides,file = "Temporary_files/allPeptides.RData")
+      save(evidence,file = "Temporary_files/evidence.RData")
     }
 
     QC_data <- list() ##here relevant qc data is stored and finally saved as RData which can be used for re-generating plots
 
-    grDevices::pdf(base::paste("Temporary_files\\QC_plots",output_file_names_add,".pdf",sep=""))
+    grDevices::pdf(base::paste("Temporary_files/QC_plots",output_file_names_add,".pdf",sep=""))
 
     RT_calibration <- T
     mz_calibration <- T
@@ -2010,12 +2007,12 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     close(pb)
 
     features <- features[1:count_features,]
-    #write.table(features,base::paste("Temporary_files\\Features_aligned_peptides",output_file_names_add,".txt",sep=""),row.names = F)
+    #write.table(features,base::paste("Temporary_files/Features_aligned_peptides",output_file_names_add,".txt",sep=""),row.names = F)
 
     borders_RT <- borders_RT_use_save
 
-    if(MassSpec_mode == "Orbitrap")save(temp_data,features,allpeptides,borders_m.z,borders_RT,windows,file=base::paste("Temporary_files\\features_aligned_step_1",output_file_names_add,".RData",sep=""))
-    if(MassSpec_mode == "TIMSToF")save(temp_data,features,allpeptides,borders_m.z,borders_RT,borders_IM,windows,file=base::paste("Temporary_files\\features_aligned_step_1",output_file_names_add,".RData",sep=""))
+    if(MassSpec_mode == "Orbitrap")save(temp_data,features,allpeptides,borders_m.z,borders_RT,windows,file=base::paste("Temporary_files/features_aligned_step_1",output_file_names_add,".RData",sep=""))
+    if(MassSpec_mode == "TIMSToF")save(temp_data,features,allpeptides,borders_m.z,borders_RT,borders_IM,windows,file=base::paste("Temporary_files/features_aligned_step_1",output_file_names_add,".RData",sep=""))
     #####Perform alignment of undefined features
 
     # if(align_unknown == T)
@@ -2245,7 +2242,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     #
     #   features_unknown <- features_unknown[1:count_features_unknown,]
     #
-    #   #write.table(features_unknown,base::paste("Temporary_files\\Features_aligned_unknown",output_file_names_add,".txt",sep=""),row.names = F)
+    #   #write.table(features_unknown,base::paste("Temporary_files/Features_aligned_unknown",output_file_names_add,".txt",sep=""),row.names = F)
     #
     #   ####Combine known and unknown features
     #   features <- rbind(features,features_unknown)
@@ -2262,7 +2259,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     #   save(temp_data_m,features,count_features_unknown,file=base::paste("features_aligned_step_2",output_file_names_add,".RData",sep=""))
     # }
 
-    #write.table(features,base::paste("Temporary_files\\Features_aligned",output_file_names_add,".txt",sep=""),row.names = F)
+    #write.table(features,base::paste("Temporary_files/Features_aligned",output_file_names_add,".txt",sep=""),row.names = F)
 
     ####Merge features which were currently regarded as separated although same RT and m/z
     #features <- utils::read.table("Features_alligned.txt",header = T)
@@ -3080,9 +3077,9 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     features <- cbind(features,RT_calibration_vals,mz_calibration_vals)
     if(MassSpec_mode == "TIMSToF")features <- cbind(features,IM_calibration_vals)
 
-    utils::write.table(features,base::paste("Temporary_files\\Features_aligned_merged",output_file_names_add,".txt",sep=""),row.names = F)
+    utils::write.table(features,base::paste("Temporary_files/Features_aligned_merged",output_file_names_add,".txt",sep=""),row.names = F)
 
-    save(QC_data,file = base::paste("Temporary_files\\Feature_alignment_QC_data.RData",sep=""))
+    save(QC_data,file = base::paste("Temporary_files/Feature_alignment_QC_data.RData",sep=""))
 
     grDevices::dev.off()
     options(warn=0)
@@ -3099,7 +3096,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 #' @export
 add_isotope_features <- function(path_to_features,feature_table_file_name="Features_aligned_merged_IceR_analysis.txt",min_observations=0)
 {
-  setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
+  setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
   features <- utils::read.table(feature_table_file_name,header = T)
   setwd(path_to_features)
 
@@ -3120,7 +3117,7 @@ add_isotope_features <- function(path_to_features,feature_table_file_name="Featu
       isotope_features$m.z_range_min <- isotope_features$m.z-(delta_mz/2)
       isotope_features$Feature_name <- base::paste(isotope_features$Feature_name,"_i",sep="")
       features <- rbind(features,isotope_features)
-      utils::write.table(features,base::paste("Temporary_files\\",feature_table_file_name,sep=""),row.names = F)
+      utils::write.table(features,base::paste("Temporary_files/",feature_table_file_name,sep=""),row.names = F)
       print(base::paste("Added",nrow(isotope_features),"isotope features."))
     }else
     {
@@ -3156,9 +3153,9 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
   RT_calibration=T
   mz_calibration=T
 
-  grDevices::pdf("Temporary_files\\Potentially_missed_peptides_QC_plots.pdf")
+  grDevices::pdf("Temporary_files/Potentially_missed_peptides_QC_plots.pdf")
 
-  setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
+  setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
   features <- utils::read.table(feature_table_file_name,header = T)
   setwd(path_to_features)
 
@@ -3281,7 +3278,7 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
                                                RT=new_peptide_parameters$predicted)
 
   ###Now try to see if corresponding features with +2 or +3 charge wera already detected by MaxQ
-  setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
+  setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
   load("allpeptides.RData")
   setwd(path_to_features)
 
@@ -3395,7 +3392,7 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
   ###now search for potential fitting MaxQ features, if MaxQ feature mass fits to potential peptide and more than one species (e.g. two and three charges)
   ###where detected, take this charge for which more MaxQ features were found
   QC_data <- NULL
-  load("Temporary_files\\Feature_alignment_QC_data.RData")
+  load("Temporary_files/Feature_alignment_QC_data.RData")
   borders_RT <- QC_data$Feature_alignment_windows$RT_window
   borders_m.z <- QC_data$Feature_alignment_windows$mz_window
 
@@ -3649,7 +3646,7 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
     close(pb)
 
     ####now predict mz for missing mzcalibrations of features
-    setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
+    setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
     load("allpeptides.RData")
     setwd(path_to_features)
 
@@ -3766,7 +3763,7 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
   features_unknown <- cbind(features_unknown,RT_calibration_vals,mz_calibration_vals)
 
   ###get full features list again
-  setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
+  setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
   features <- utils::read.table(feature_table_file_name,header = T)
   setwd(path_to_features)
 
@@ -3774,7 +3771,7 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
   features <- rbind(features,features_unknown)
 
   ###Save features list
-  utils::write.table(features,base::paste("Temporary_files\\",feature_table_file_name,sep=""),row.names = F)
+  utils::write.table(features,base::paste("Temporary_files/",feature_table_file_name,sep=""),row.names = F)
 
   options(warn=0)
   grDevices::dev.off()
@@ -3866,7 +3863,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   sd_background_intensity <- NA
   n_background_intensity <- NA
 
-  setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
+  setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
   features <- utils::read.table(feature_table_file_name,header = T)
   setwd(path_to_features)
 
@@ -4989,8 +4986,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
       if(plots == T)
       {
-        dir.create(base::paste(path,"\\2Dpeakselection",sep=""))
-        dir.create(base::paste(path,"\\2Dpeakselection\\",Sample_ID,sep=""))
+        dir.create(base::paste(path,"/2Dpeakselection",sep=""))
+        dir.create(base::paste(path,"/2Dpeakselection/",Sample_ID,sep=""))
       }
 
       for(i in 1:nrow(features_select))
@@ -5072,7 +5069,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
           {
             if(plots == T)
             {
-              grDevices::pdf(base::paste(path,"\\2Dpeakselection\\",Sample_ID,"\\",features_select$Feature_name[i],".pdf",sep=""))
+              grDevices::pdf(base::paste(path,"/2Dpeakselection/",Sample_ID,"/",features_select$Feature_name[i],".pdf",sep=""))
             }
 
             if(MassSpec_mode == "Orbitrap")
@@ -5460,8 +5457,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       peaks_quant <- res$peaks_quant
       #peaks_graph <- res$graph_peaks
 
-      save(peaks_quant,file = base::paste(path_to_output_folder,"\\",Sample_ID,"_feature_quant.RData",sep=""))
-      #if(length(peaks_graph)>0)save(peaks_graph,file = base::paste(path_to_output_folder,"\\",Sample_ID,"_feature_graphs.RData",sep=""))
+      save(peaks_quant,file = base::paste(path_to_output_folder,"/",Sample_ID,"_feature_quant.RData",sep=""))
+      #if(length(peaks_graph)>0)save(peaks_graph,file = base::paste(path_to_output_folder,"/",Sample_ID,"_feature_graphs.RData",sep=""))
 
     }
 
@@ -5485,7 +5482,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   if(MassSpec_mode == "Orbitrap")
   {
     ###check for which samples mzXML files are available
-    mzXMLfiles <- list.files(base::paste(path_to_mzXML,"\\all_ion_lists",sep=""))
+    mzXMLfiles <- list.files(base::paste(path_to_mzXML,"/all_ion_lists",sep=""))
     mzXMLfiles <- mzXMLfiles[which(grepl(".RData",mzXMLfiles))]
     samples <- mzXMLfiles
     samples <- base::substr(samples,1,regexpr("_all_ions.RData",samples)-1)
@@ -5526,8 +5523,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
   ###Perform quantification of decoy features
 
-  dir.create(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted decoy intensities",output_file_names_add,sep=""),showWarnings = F)
-  available <- list.files(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted decoy intensities",output_file_names_add,sep=""))
+  dir.create(base::paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep=""),showWarnings = F)
+  available <- list.files(base::paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep=""))
   available <- base::gsub("_feature_quant.RData","",available)
   if(length(which(samples %not in% available))>0)
   {
@@ -5537,8 +5534,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     #single core in case of TIMSToF data as it fills memory too much
     extract_intensities_worker(Sample_IDs = as.character(samples),
                                features_select = features[selected_decoys,],
-                               path_to_raw = base::paste(path_to_mzXML,"\\all_ion_lists",sep=""),
-                               path_to_output_folder = base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted decoy intensities",output_file_names_add,sep=""),
+                               path_to_raw = base::paste(path_to_mzXML,"/all_ion_lists",sep=""),
+                               path_to_output_folder = base::paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep=""),
                                RT_calibration=RT_calibration,
                                mz_calibration=mz_calibration,
                                peak_detection=F,
@@ -5548,11 +5545,11 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   }
 
   ###determine distribution of background ion intensities
-  samples <- list.files(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted decoy intensities",output_file_names_add,sep=""))
+  samples <- list.files(base::paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep=""))
   samples <- samples[which(grepl("_feature_quant.RData",samples))]
   samples <- base::substr(samples,1,regexpr("_feature_quant.RData",samples)-1)
 
-  files <- list.files(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted decoy intensities",output_file_names_add,sep=""))
+  files <- list.files(base::paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep=""))
   if(length(which(!grepl("_feature_quant.RData",files)))>0)
   {
     files <- files[-which(!grepl("_feature_quant.RData",files))]
@@ -5574,7 +5571,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   {
     #load stored data into variable peaks_quant
     peaks_quant <- NULL
-    load(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted decoy intensities",output_file_names_add,"\\",colnames(decoy_intensities)[c],"_feature_quant.RData",sep=""))
+    load(base::paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,"/",colnames(decoy_intensities)[c],"_feature_quant.RData",sep=""))
 
     signal=peaks_quant[[1]]$Intensities
 
@@ -5586,7 +5583,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
   ###plot general numbers of quantifications of decoy features
   setwd(path_to_features)
-  grDevices::pdf("Temporary_files\\Decoy feature quantification parameters.pdf")
+  grDevices::pdf("Temporary_files/Decoy feature quantification parameters.pdf")
 
   ###mean decoy intensity (intensity of a single decoy ion)
   RT_all <- rep(as.numeric(features_select$RT),ncol(decoy_mean_intensity))
@@ -5741,8 +5738,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   }
   samples <- samples[which(samples %in% Requant_samples)]
 
-  dir.create(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted feature intensities",output_file_names_add,sep=""),showWarnings = F)
-  available <- list.files(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted feature intensities",output_file_names_add,sep=""))
+  dir.create(base::paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep=""),showWarnings = F)
+  available <- list.files(base::paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep=""))
   available <- available[which(grepl("feature_quant.RData",available))]
   available <- base::gsub("_feature_quant.RData","",available)
   peak_min_ion_count <- grDevices::boxplot.stats(as.numeric(as.matrix(decoy_ioncount)))$stats[4]
@@ -5752,8 +5749,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     ##use decoy defined cut of to distinguish background intensity from signal intensity per feature
     extract_intensities_worker(Sample_IDs = as.character(samples),
                                features_select = features,
-                               path_to_raw = base::paste(path_to_mzXML,"\\all_ion_lists",sep=""),
-                               path_to_output_folder = base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted feature intensities",output_file_names_add,sep=""),
+                               path_to_raw = base::paste(path_to_mzXML,"/all_ion_lists",sep=""),
+                               path_to_output_folder = base::paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep=""),
                                RT_calibration=RT_calibration,
                                mz_calibration=mz_calibration,
                                peak_detection=peak_detection,
@@ -5770,12 +5767,12 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   }
 
   #####Summarize data for all features and samples
-  samples <- list.files(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted feature intensities",output_file_names_add,sep=""))
+  samples <- list.files(base::paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep=""))
   samples <- samples[which(grepl("feature_quant.RData",samples))]
   samples <- base::substr(samples,1,regexpr("_feature_quant.RData",samples)-1)
 
   ###Available sample data
-  files <- list.files(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted feature intensities",output_file_names_add,sep=""))
+  files <- list.files(base::paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep=""))
   if(length(which(!grepl("feature_quant.RData",files)))>0)
   {
     files <- files[-which(!grepl("feature_quant.RData",files))]
@@ -5852,7 +5849,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
       #load stored data into variable peaks_quant
       peaks_quant <- NULL
-      load(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted feature intensities",output_file_names_add,"\\",colnames(features_intensity)[c],"_feature_quant.RData",sep=""))
+      load(base::paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,"/",colnames(features_intensity)[c],"_feature_quant.RData",sep=""))
 
       signal=peaks_quant[[1]]$Intensities
       signal_background=peaks_quant[[1]]$Intensities_signal_background
@@ -5866,7 +5863,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     }else
     {
       #load stored data into variable peaks_quant
-      load(base::paste(path_to_mzXML,"\\all_ion_lists\\Extracted feature intensities",output_file_names_add,"\\",colnames(features_intensity)[c],"_feature_quant.RData",sep=""))
+      load(base::paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,"/",colnames(features_intensity)[c],"_feature_quant.RData",sep=""))
 
       for(p in 1:(num_peaks_store+1))
       {
@@ -5912,9 +5909,9 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   close(pb)
 
   #if peak detection was performed, then check if peak selection was already done. If yes, load stored data, if not, perform peak selection
-  if(file.exists(base::paste(path_to_features,"\\Temporary_files\\Quantification_raw_results.RData",sep="")))
+  if(file.exists(base::paste(path_to_features,"/Temporary_files/Quantification_raw_results.RData",sep="")))
   {
-    load(base::paste(path_to_features,"\\Temporary_files\\Quantification_raw_results.RData",sep=""))
+    load(base::paste(path_to_features,"/Temporary_files/Quantification_raw_results.RData",sep=""))
     crap <- gc(F)
   }else
   {
@@ -6051,7 +6048,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
     setwd(path_to_features)
     dir.create("Temporary_files")
-    setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
+    setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
     print("Save peak detection and selection results")
     save(features,
          features_intensity,
@@ -6089,7 +6086,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
   setwd(path_to_features)
 
-  grDevices::pdf("Temporary_files\\Alignment and quantification scores.pdf")
+  grDevices::pdf("Temporary_files/Alignment and quantification scores.pdf")
 
   features$target_decoy <- ifelse(grepl("_d",features$Feature_name),"decoy","target")
   ###Tag decoy features which overlap with real features
@@ -6866,7 +6863,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
                        mono_iso_alignment_summary=mono_iso_alignment_summary,
                        peaks=peaks,
                        QC_data)
-  setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
+  setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
   save(temp_results,file = "Quantification_raw_results_with_scores.RData")
 
   crap <- gc(F)
@@ -7210,7 +7207,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
                        alignment_scores_peaks_raw=alignment_scores_peaks_raw,
                        mono_iso_alignment_summary=mono_iso_alignment_summary,
                        QC_data)
-  setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
+  setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
   save(temp_results,file = "Quantification_raw_results_with_scores_filtered.RData")
 
   # path_to_features <- "F:\\9_Spike_in_data_sets\\4_spike-in human Shen\\Requant\\19 - DDAicer reprocessed"
@@ -7773,7 +7770,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   if(!is.null(path_to_MaxQ_output))
   {
     ###load MaxQ peptide results
-    MaxQ_peptides <- utils::read.table(base::paste(path_to_MaxQ_output,"\\peptides.txt",sep=""),sep="\t",header=T)
+    MaxQ_peptides <- utils::read.table(base::paste(path_to_MaxQ_output,"/peptides.txt",sep=""),sep="\t",header=T)
     MaxQ_peptides <- MaxQ_peptides[-which(MaxQ_peptides$Potential.contaminant == "+" | MaxQ_peptides$Reverse == "+"),]
     if(multiplicity == 1)MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.",colnames(MaxQ_peptides)))]
     if(multiplicity > 1)MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.[LMH]\\.",colnames(MaxQ_peptides)))]
@@ -7783,7 +7780,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     MaxQ_peptides_leading_razor$Leading_razor <- as.character(MaxQ_peptides_leading_razor$Leading_razor)
     MaxQ_peptides <- base::data.frame(Sequence=MaxQ_peptides$Sequence,MaxQ_peptides_quant)
 
-    MaxQ_protein_groups <- utils::read.table(base::paste(path_to_MaxQ_output,"\\proteinGroups.txt",sep=""),sep="\t",header=T)
+    MaxQ_protein_groups <- utils::read.table(base::paste(path_to_MaxQ_output,"/proteinGroups.txt",sep=""),sep="\t",header=T)
 
     ###check if IDs were correctly parsed, if not, try to parse with SwissProt or Trembl
     if(!any(colnames(MaxQ_protein_groups) == "Gene.names") & any(colnames(MaxQ_protein_groups) == "Protein.IDs")) ##not correctly parsed but contains trembl or swissprot fasta headers
@@ -8655,35 +8652,35 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
     if(calc_protein_LFQ == T)
     {
-      utils::write.table(x = LFQ_quant_with_background,file = base::paste(path_to_features,"\\Proteins_quantification_LFQ",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
-      utils::write.table(x = LFQ_quant_with_background_imputed,file = base::paste(path_to_features,"\\Proteins_quantification_LFQ_imputed",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
+      utils::write.table(x = LFQ_quant_with_background,file = base::paste(path_to_features,"/Proteins_quantification_LFQ",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
+      utils::write.table(x = LFQ_quant_with_background_imputed,file = base::paste(path_to_features,"/Proteins_quantification_LFQ_imputed",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
     }
-    utils::write.table(x = Top3_quant_with_background,file = base::paste(path_to_features,"\\Proteins_quantification_Top3",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
-    utils::write.table(x = Top3_quant_with_background_imputed,file = base::paste(path_to_features,"\\Proteins_quantification_Top3_imputed",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
-    utils::write.table(x = Total_quant_with_background,file = base::paste(path_to_features,"\\Proteins_quantification_Total",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
-    utils::write.table(x = Total_quant_with_background_imputed,file = base::paste(path_to_features,"\\Proteins_quantification_Total_imputed",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
+    utils::write.table(x = Top3_quant_with_background,file = base::paste(path_to_features,"/Proteins_quantification_Top3",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
+    utils::write.table(x = Top3_quant_with_background_imputed,file = base::paste(path_to_features,"/Proteins_quantification_Top3_imputed",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
+    utils::write.table(x = Total_quant_with_background,file = base::paste(path_to_features,"/Proteins_quantification_Total",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
+    utils::write.table(x = Total_quant_with_background_imputed,file = base::paste(path_to_features,"/Proteins_quantification_Total_imputed",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
 
     if(calc_peptide_LFQ == T)
     {
-      utils::write.table(x = LFQ_peptide_quant_with_background,file = base::paste(path_to_features,"\\Peptides_quantification_LFQ",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
-      utils::write.table(x = LFQ_peptide_quant_with_background_imputed,file = base::paste(path_to_features,"\\Peptides_quantification_LFQ_imputed",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
+      utils::write.table(x = LFQ_peptide_quant_with_background,file = base::paste(path_to_features,"/Peptides_quantification_LFQ",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
+      utils::write.table(x = LFQ_peptide_quant_with_background_imputed,file = base::paste(path_to_features,"/Peptides_quantification_LFQ_imputed",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
     }
   }
 
   setwd(path_to_features)
 
   ###finally save feature level quantification
-  utils::write.table(x = features,file = base::paste(path_to_features,"\\Features",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
-  utils::write.table(x = feature_with_background_intensity,file = base::paste(path_to_features,"\\Features_quantification",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
-  utils::write.table(x = feature_with_background_intensity_imputed,file = base::paste(path_to_features,"\\Features_quantification_imputed",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
-  utils::write.table(x = pval_signal_with_background_quant,file = base::paste(path_to_features,"\\Features_quantification_pvals",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
-  utils::write.table(x = Ioncount_feature_with_background_intensity,file = base::paste(path_to_features,"\\Features_quantification_ioncount",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
-  utils::write.table(x = S2B,file = base::paste(path_to_features,"\\Features_quantification_S2B",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
-  utils::write.table(x = alignment_variability_score,file = base::paste(path_to_features,"\\Features_quantification_variability_score",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
-  utils::write.table(x = alignment_scores_peaks_correct,file = base::paste(path_to_features,"\\Features_quantification_alignment_score",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
-  utils::write.table(x = mono_iso_alignment_summary,file = base::paste(path_to_features,"\\Features_quantification_mono_iso_alignment_score",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
+  utils::write.table(x = features,file = base::paste(path_to_features,"/Features",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
+  utils::write.table(x = feature_with_background_intensity,file = base::paste(path_to_features,"/Features_quantification",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
+  utils::write.table(x = feature_with_background_intensity_imputed,file = base::paste(path_to_features,"/Features_quantification_imputed",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
+  utils::write.table(x = pval_signal_with_background_quant,file = base::paste(path_to_features,"/Features_quantification_pvals",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
+  utils::write.table(x = Ioncount_feature_with_background_intensity,file = base::paste(path_to_features,"/Features_quantification_ioncount",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
+  utils::write.table(x = S2B,file = base::paste(path_to_features,"/Features_quantification_S2B",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
+  utils::write.table(x = alignment_variability_score,file = base::paste(path_to_features,"/Features_quantification_variability_score",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
+  utils::write.table(x = alignment_scores_peaks_correct,file = base::paste(path_to_features,"/Features_quantification_alignment_score",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
+  utils::write.table(x = mono_iso_alignment_summary,file = base::paste(path_to_features,"/Features_quantification_mono_iso_alignment_score",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
 
-  save(QC_data,file = base::paste("Temporary_files\\Feature_quantification_QC_data.RData",sep=""))
+  save(QC_data,file = base::paste("Temporary_files/Feature_quantification_QC_data.RData",sep=""))
   options(warn=0)
 }
 
@@ -9172,7 +9169,7 @@ Peak_selection_FDR <- function(num_features=500,features,samples,peaks,path_to_f
     features$Observed_mz <- as.character(features$Observed_mz)
     features$Observed_RT <- as.character(features$Observed_RT)
 
-    setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
+    setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
     e <- new.env()
     load("Feature_alignment_QC_data.RData",envir = e)
     median_feature_properties <- e$QC_data$mz_calibration_median_feature_properties
