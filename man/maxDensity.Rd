@@ -18,7 +18,3 @@ Function to determine at which value a density maximum is reached
 \details{
 Uses kernel density estimation function from R-package stats removing missing values
 }
-\examples{
-data <- c(1,1,1,2,2,4,4,5,10)
-maxDensity(data)
-}

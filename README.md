@@ -55,14 +55,12 @@ It allows setting up the IceR run. Among others, the following parameters can be
 
  - Paths to raw files, MaxQuant results files and IceR output folder
  - MassSpec Mode switching between Orbitrap and TIMS-ToF data (with or without using TIMS dimension)
- - Analysis name
- - Retention (RT) and m/z feature alignment windows
+ - Multiplicity Mode switching between label-free (1 - LFQ) and SILAC (2 - SILAC or 3 - SILAC) and adjusting corresponding label isotopes
+ - Minimal retention (RT) and m/z feature alignment windows
  - Kernel density estimation (KDE) resolution (increasing resolution increases computation workload but also increases resolution of peak detections) 
- - Number of peaks to be stored per quantification
- - Diagnostic and statistical significance cutoffs for quantifications
  - Number of threads to be used during IceR workflow (please check on your system specifications. Should not be higher than numbers of samples to be analyzed. Number of threads should be also adapted to available RAM. In case of TIMS-ToF data, a single 2h gradient acquisition run will require ~ 40 gb of RAM, hence, number of threads will be automatically limited in this case to 3 parallel threads)
 
-We can keep all settings at default (changes of some parameters are disabled at the moment) but reduce number of threads to 4. 
+We can keep all settings at default but reduce number of threads to 4. 
 
 Please specify the path to the downloaded raw files and MaxQuant results by clicking on the respective "Choose directory" buttons. Similarly, please specify a folder where IceR results should be stored.
 

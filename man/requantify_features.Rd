@@ -70,8 +70,6 @@ requantify_features(
 \item{use_IM_data}{Boolean value indicating if ion mobility information should be used during feature quantification in case of TIMS-ToF data. By default set to T.}
 
 \item{path_to_extracted_spectra}{Path to folder containing extracted spectra files of samples in case of TIMS-ToF data.}
-
-\item{path_to_output}{Path to folder where IceR results should be stored}
 }
 \value{
 Outputs are stored in the specified output folder and intermediate results are stored in the sub-directory Temporary_files.

@@ -23,6 +23,8 @@ PECA_analysis(
 
 \item{ids}{character vector of same length as rows in peptide_data indicating to which protein ID the corresponding peptide belongs to.}
 
+\item{anno}{Annotation of grouping per sample}
+
 \item{group1_name}{Name of group1 in annotation}
 
 \item{group2_name}{Name of group1 in annotation}
@@ -32,8 +34,6 @@ PECA_analysis(
 \item{pvalue_cutoff}{Optional: Ion accumulation significance cutoff.}
 
 \item{test}{A character string indicating whether the ordinary t-test ("t"), modified t-test ("modt"), or reproducibility-optimized test statistic ("rots") is performed.}
-
-\item{annotation}{Annotation of grouping per sample}
 }
 \value{
 Returns a matrix which rows correspond to the genes under analysis and columns indicate the corresponding abundance ratio, t-statistic, p-value and FDR adjusted p-value

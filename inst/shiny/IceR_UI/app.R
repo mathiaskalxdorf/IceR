@@ -1,9 +1,3 @@
-suppressMessages(library(IceR))
-suppressMessages(library(openxlsx))
-suppressMessages(library(shiny))
-suppressMessages(library(shinyFiles))
-suppressMessages(library(shinyjs))
-suppressMessages(library(stringr))
 
 dropdownButton <- function(label = "", status = c("default", "primary", "success", "info", "warning", "danger"), ..., width = NULL)
 {
@@ -128,15 +122,16 @@ run_panel <- fluidPage(
     ),
 
     column(3,
-           checkboxGroupInput("alignment_settings",
-                              h3("Alignment settings"),
-                              choices = list("Align unknown" = 1,
-                                             "Only unmodified" = 2),
-                              selected = 0),
-
-           h5("Feature collapse m/z"),
-           sliderInput("Collapse_mz", "",
-                       min = 0, max = 0.01, value = 0.002,step=0.0005)
+           h3("Alignment settings")
+           # checkboxGroupInput("alignment_settings",
+           #                    h3("Alignment settings"),
+           #                    choices = list("Align unknown" = 1,
+           #                                   "Only unmodified" = 2),
+           #                    selected = 0),
+           #
+           # h5("Feature collapse m/z"),
+           # sliderInput("Collapse_mz", "",
+           #             min = 0, max = 0.01, value = 0.002,step=0.0005)
     ),
 
     column(3,
@@ -145,9 +140,9 @@ run_panel <- fluidPage(
            sliderInput("min_RT_window", "",
                        min = 0, max = 10, value = 1.0,step=0.1),
 
-           h5("RT-Window"),
-           sliderInput("RT_window", "",
-                       min = 0, max = 10, value = 0,step=0.1)
+           # h5("RT-Window"),
+           # sliderInput("RT_window", "",
+           #             min = 0, max = 10, value = 0,step=0.1)
 
     ),
     column(3,
@@ -156,9 +151,9 @@ run_panel <- fluidPage(
            sliderInput("min_mz_window", "",
                        min = 0, max = 0.01, value = 0.001,step=0.0005),
 
-           h5("m/z-Window"),
-           sliderInput("mz_window", "",
-                       min = 0, max = 0.01, value = 0,step=0.0005)
+           # h5("m/z-Window"),
+           # sliderInput("mz_window", "",
+           #             min = 0, max = 0.01, value = 0,step=0.0005)
 
     )
 
@@ -173,39 +168,40 @@ run_panel <- fluidPage(
     ),
 
     column(3,
-           checkboxGroupInput("requant_settings",
-                              h3("Requantification settings"),
-                              choices = list("RT calibration" = 1,
-                                             "m/z calibration" = 2,
-                                             "Use Isotope ions" = 3,
-                                             "Intensity correction" = 4,
-                                             "Peak detection" = 5,
-                                             "Add PMPs" = 6,
-                                             "Plot 2D peak detection" = 7,
-                                             "MaxLFQ quantification" = 8
-                              ),
-                              selected = c(1,2,3,4,5,8))
+           h3("Requantification settings")
+           # checkboxGroupInput("requant_settings",
+           #                    h3("Requantification settings"),
+           #                    choices = list("RT calibration" = 1,
+           #                                   "m/z calibration" = 2,
+           #                                   "Use Isotope ions" = 3,
+           #                                   "Intensity correction" = 4,
+           #                                   "Peak detection" = 5,
+           #                                   "Add PMPs" = 6,
+           #                                   "Plot 2D peak detection" = 7,
+           #                                   "MaxLFQ quantification" = 8
+           #                    ),
+           #                    selected = c(1,2,3,4,5,8))
     ),
     column(3,
            br(),br(),br(),
-           h5("Alignment score cut"),
-           sliderInput("Alignment_score_cut", "",
-                       min = 0, max = 1, value = 0.05,step=0.005),
-
-           h5("Quantification pValue"),
-           sliderInput("Quant_pVal_cut", "",
-                       min = 0, max = 1, value = 0.05,step=0.005)
-    ),
-    column(3,
-           br(),br(),br(),
-
            h5("KDE resolution"),
            sliderInput("kde_resolution", "",
-                       min = 10, max = 200, value = 50,step=5),
+                       min = 10, max = 200, value = 50,step=5)
+           # h5("Alignment score cut"),
+           # sliderInput("Alignment_score_cut", "",
+           #             min = 0, max = 1, value = 0.05,step=0.005),
+           #
+           # h5("Quantification pValue"),
+           # sliderInput("Quant_pVal_cut", "",
+           #             min = 0, max = 1, value = 0.05,step=0.005)
+    ),
+    column(3,
+           br(),br(),br(),
 
-           h5("Stored peak count"),
-           sliderInput("num_peaks_store", "",
-                       min = 1, max = 10, value = 5,step=1),
+
+           # h5("Stored peak count"),
+           # sliderInput("num_peaks_store", "",
+           #             min = 1, max = 10, value = 5,step=1),
 
            h5("Number of threads"),
            sliderInput("n_cores", "",
@@ -273,17 +269,17 @@ ui <- fluidPage(
 
 run_all_processes <- function(settings_list)
 {
-  align_unknown <- ifelse(any(settings_list$alignment_settings == "1"),T,F)
-  only_unmodified <- ifelse(any(settings_list$alignment_settings == "2"),T,F)
+  align_unknown <- F#ifelse(any(settings_list$alignment_settings == "1"),T,F)
+  only_unmodified <- F#ifelse(any(settings_list$alignment_settings == "2"),T,F)
 
-  RT_calibration <- ifelse(any(settings_list$requant_settings == "1"),T,F)
-  mz_calibration <- ifelse(any(settings_list$requant_settings == "2"),T,F)
-  use_isotopes <- ifelse(any(settings_list$requant_settings == "3"),T,F)
-  intensity_correction <- ifelse(any(settings_list$requant_settings == "4"),T,F)
-  peak_detection <- ifelse(any(settings_list$requant_settings == "5"),T,F)
-  add_PMPs <- ifelse(any(settings_list$requant_settings == "6"),T,F)
-  plot_peak_detection <- ifelse(any(settings_list$requant_settings == "7"),T,F)
-  calc_protein_LFQ <- ifelse(any(settings_list$requant_settings == "8"),T,F)
+  RT_calibration <- T#ifelse(any(settings_list$requant_settings == "1"),T,F)
+  mz_calibration <- T#ifelse(any(settings_list$requant_settings == "2"),T,F)
+  use_isotopes <- T#ifelse(any(settings_list$requant_settings == "3"),T,F)
+  intensity_correction <- T#ifelse(any(settings_list$requant_settings == "4"),T,F)
+  peak_detection <- T#ifelse(any(settings_list$requant_settings == "5"),T,F)
+  add_PMPs <- F#ifelse(any(settings_list$requant_settings == "6"),T,F)
+  plot_peak_detection <- F#ifelse(any(settings_list$requant_settings == "7"),T,F)
+  calc_protein_LFQ <- T#ifelse(any(settings_list$requant_settings == "8"),T,F)
 
 
   path_to_MaxQ_output <- ifelse(endsWith(settings_list$MaxQ_output_folder,"/"),
@@ -296,9 +292,9 @@ run_all_processes <- function(settings_list)
                            substr(settings_list$IceR_output,1,nchar(settings_list$IceR_output)-1),
                            settings_list$IceR_output)
   min_mz_window <- ifelse(settings_list$min_mz_window > 0,settings_list$min_mz_window,NA)
-  mz_window <- ifelse(settings_list$mz_window > 0,settings_list$mz_window,NA)
+  mz_window <- NA#ifelse(settings_list$mz_window > 0,settings_list$mz_window,NA)
   min_RT_window <- ifelse(settings_list$min_RT_window > 0,settings_list$min_RT_window,NA)
-  RT_window <- ifelse(settings_list$RT_window > 0,settings_list$RT_window,NA)
+  RT_window <- NA#ifelse(settings_list$RT_window > 0,settings_list$RT_window,NA)
 
   n_cores <- settings_list$n_cores
 
@@ -534,10 +530,19 @@ run_all_processes <- function(settings_list)
 }
 
 #Server
-server <- function(input, output,session){
+server <- function(input, output,session)
+{
+  suppressWarnings(suppressMessages(library(IceR,quietly = T)))
+  suppressWarnings(suppressMessages(library(openxlsx,quietly = T)))
+  suppressWarnings(suppressMessages(library(shiny,quietly = T)))
+  suppressWarnings(suppressMessages(library(shinyFiles,quietly = T)))
+  suppressWarnings(suppressMessages(library(shinyjs,quietly = T)))
+  suppressWarnings(suppressMessages(library(stringr,quietly = T)))
+  suppressWarnings(suppressMessages(library(tcltk,quietly = T)))
+  suppressWarnings(suppressMessages(library(rChoiceDialogs,quietly = T)))
 
-  shinyjs::disable("alignment_settings")
-  shinyjs::disable("requant_settings")
+  #shinyjs::disable("alignment_settings")
+  #shinyjs::disable("requant_settings")
   shinyjs::disable("light_labels")
   shinyjs::disable("medium_labels")
   shinyjs::disable("heavy_labels")
@@ -577,11 +582,14 @@ server <- function(input, output,session){
   # })
   observeEvent(input$MaxQ_output_folder, {
 
-    selected_folder <- choose.dir(caption = "Choose MaxQ output folder")
-    if(!is.na(selected_folder))
+    selected_folder <- rchoose.dir(caption = "Choose MaxQ output folder",default = "~")
+    if(length(selected_folder)>0)
     {
-      selected_folder <- gsub("\\\\","/",selected_folder)
-      global_MaxQ_output_folder$datapath <- selected_folder#paste0(selected_folder,"\\")
+      if(!is.na(selected_folder))
+      {
+        selected_folder <- gsub("\\\\","/",selected_folder)
+        global_MaxQ_output_folder$datapath <- selected_folder#paste0(selected_folder,"\\")
+      }
     }
   })
 
@@ -615,11 +623,14 @@ server <- function(input, output,session){
 
   observeEvent(input$Raw_folder, {
 
-    selected_folder <- choose.dir(caption = "Choose folder containing raw files")
-    if(!is.na(selected_folder))
+    selected_folder <- rchoose.dir(caption = "Choose folder containing raw files",default = "~")
+    if(length(selected_folder)>0)
     {
-      selected_folder <- gsub("\\\\","/",selected_folder)
-      global_Raw_folder$datapath <- paste0(selected_folder,"/")
+      if(!is.na(selected_folder))
+      {
+        selected_folder <- gsub("\\\\","/",selected_folder)
+        global_Raw_folder$datapath <- paste0(selected_folder,"/")
+      }
     }
   })
 
@@ -652,11 +663,14 @@ server <- function(input, output,session){
 
   observeEvent(input$IceR_output, {
 
-    selected_folder <- choose.dir(caption = "Choose final output folder")
-    if(!is.na(selected_folder))
+    selected_folder <- rchoose.dir(caption = "Choose final output folder",default = "~")
+    if(length(selected_folder)>0)
     {
-      selected_folder <- gsub("\\\\","/",selected_folder)
-      global_IceR_output$datapath <- selected_folder#paste0(selected_folder,"\\")
+      if(!is.na(selected_folder))
+      {
+        selected_folder <- gsub("\\\\","/",selected_folder)
+        global_IceR_output$datapath <- selected_folder#paste0(selected_folder,"\\")
+      }
     }
   })
 
@@ -707,18 +721,18 @@ server <- function(input, output,session){
                           Raw_folder=global_Raw_folder$datapath,
                           IceR_output = global_IceR_output$datapath,
                           min_RT_window = input$min_RT_window,
-                          RT_window = input$RT_window,
+                          RT_window = NA,#input$RT_window,
                           min_mz_window = input$min_mz_window,
-                          mz_window = input$mz_window,
-                          collapse_mz = input$Collapse_mz,
+                          mz_window = NA,#input$mz_window,
+                          collapse_mz = 0.002,
                           analysis_name = input$Analysis_name,
-                          alignment_settings = input$alignment_settings,
-                          requant_settings = input$requant_settings,
-                          Alignment_score_cut = input$Alignment_score_cut,
-                          Quant_pVal_cut = input$Quant_pVal_cut,
+                          #alignment_settings = input$alignment_settings,
+                          #requant_settings = input$requant_settings,
+                          Alignment_score_cut = 0.05,#input$Alignment_score_cut,
+                          Quant_pVal_cut = 0.05,#input$Quant_pVal_cut,
                           n_cores = input$n_cores,
                           kde_resolution = input$kde_resolution,
-                          num_peaks_store = input$num_peaks_store,
+                          num_peaks_store = 5,#input$num_peaks_store,
                           MassSpec_settings = input$massspecmode,
                           multiplicity_settings = input$multiplicity_settings,
                           light_labels = input$light_labels,
@@ -733,7 +747,7 @@ server <- function(input, output,session){
     selected_parameters <- vector("character",0)
     Filters_temp <- rbind(Filters,c("Excel files (*.xlsx)","*.xlsx"))
     rownames(Filters_temp)[nrow(Filters_temp)] <- "xlsx"
-    if (interactive() && .Platform$OS.type == "windows")selected_parameters <- choose.files(caption = "Select IceR parameters file",multi = F,filters = Filters_temp[c("All","xlsx"),])
+    selected_parameters <- rchoose.files(caption = "Select IceR parameters file",multi = F,filters = Filters_temp[c("All","xlsx"),],default="~")
     if(length(selected_parameters)>0)
     {
       temp_settings <- read.xlsx(selected_parameters)
@@ -744,17 +758,17 @@ server <- function(input, output,session){
       global_IceR_output$datapath <- temp_settings$Setting[3]
 
       updateTextInput(session,"Analysis_name",value = temp_settings$Setting[4])
-      updateSliderInput(session, "mz_window", min = 0, max = 0.01, value = as.numeric(temp_settings$Setting[5]),step=0.0005)
-      updateSliderInput(session, "RT_window", min = 0, max = 10, value = as.numeric(temp_settings$Setting[6]),step=0.1)
+      #updateSliderInput(session, "mz_window", min = 0, max = 0.01, value = as.numeric(temp_settings$Setting[5]),step=0.0005)
+      #updateSliderInput(session, "RT_window", min = 0, max = 10, value = as.numeric(temp_settings$Setting[6]),step=0.1)
       updateSliderInput(session, "min_mz_window", min = 0, max = 0.01, value = as.numeric(temp_settings$Setting[7]),step=0.0005)
       updateSliderInput(session, "min_RT_window", min = 0, max = 10, value = as.numeric(temp_settings$Setting[8]),step=0.1)
 
-      updateSliderInput(session, "Collapse_mz", min = 0, max = 0.01, value = as.numeric(temp_settings$Setting[9]),step=0.0005)
+      #updateSliderInput(session, "Collapse_mz", min = 0, max = 0.01, value = as.numeric(temp_settings$Setting[9]),step=0.0005)
 
       selection <- ifelse(temp_settings$Setting[10] == T & temp_settings$Setting[11] == T,1:2,
                           ifelse(temp_settings$Setting[10] == T,2,
                                  ifelse(temp_settings$Setting[11] == T,1,0)))
-      updateCheckboxGroupInput(session,"alignment_settings",choices = list("Align unknown" = 1,"Only unmodified" = 2),selected = selection)
+      #updateCheckboxGroupInput(session,"alignment_settings",choices = list("Align unknown" = 1,"Only unmodified" = 2),selected = selection)
 
       selection <- NULL
       if(temp_settings$Setting[18] == T)selection <- append(selection,1)
@@ -766,20 +780,20 @@ server <- function(input, output,session){
       if(temp_settings$Setting[21] == T)selection <- append(selection,7)
       if(temp_settings$Setting[22] == T)selection <- append(selection,8)
 
-      updateSliderInput(session, "Alignment_score_cut", min = 0, max = 1, value = as.numeric(temp_settings$Setting[15]),step=0.005)
-      updateSliderInput(session, "Quant_pVal_cut", min = 0, max = 1, value = as.numeric(temp_settings$Setting[16]),step=0.005)
+      #updateSliderInput(session, "Alignment_score_cut", min = 0, max = 1, value = as.numeric(temp_settings$Setting[15]),step=0.005)
+      #updateSliderInput(session, "Quant_pVal_cut", min = 0, max = 1, value = as.numeric(temp_settings$Setting[16]),step=0.005)
       updateSliderInput(session, "n_cores", min = 1, max = 50, value = as.numeric(temp_settings$Setting[17]),step=1)
       updateSliderInput(session, "kde_resolution", min = 10, max = 200, value = as.numeric(temp_settings$Setting[23]),step=5)
-      updateSliderInput(session, "num_peaks_store", min = 1, max = 10, value = as.numeric(temp_settings$Setting[24]),step=1)
+      #updateSliderInput(session, "num_peaks_store", min = 1, max = 10, value = as.numeric(temp_settings$Setting[24]),step=1)
 
-      updateCheckboxGroupInput(session,"requant_settings",choices = list("RT calibration" = 1,
-                                                                         "m/z calibration" = 2,
-                                                                         "Use Isotope ions" = 3,
-                                                                         "Intensity correction" = 4,
-                                                                         "Peak detection" = 5,
-                                                                         "Add PMPs" = 6,
-                                                                         "Plot 2D peak detection" = 7,
-                                                                         "MaxLFQ quantification" = 8),selected = selection)
+      # updateCheckboxGroupInput(session,"requant_settings",choices = list("RT calibration" = 1,
+      #                                                                    "m/z calibration" = 2,
+      #                                                                    "Use Isotope ions" = 3,
+      #                                                                    "Intensity correction" = 4,
+      #                                                                    "Peak detection" = 5,
+      #                                                                    "Add PMPs" = 6,
+      #                                                                    "Plot 2D peak detection" = 7,
+      #                                                                    "MaxLFQ quantification" = 8),selected = selection)
 
       #massspec mode
       selection_mode <- ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == T,2,
@@ -932,7 +946,7 @@ server <- function(input, output,session){
 
     ###fourth row
     output$plot_7 <- renderPlot({
-      visualize_quant_significance(QC_data,input$Quant_pVal_cut)
+      visualize_quant_significance(QC_data,0.05)
     })
 
     ###fifth row

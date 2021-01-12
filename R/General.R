@@ -1,17 +1,17 @@
 .onAttach <- function(libname, pkgname) {
 
-  library(utils)
-  if (!("cleaver" %in% rownames(installed.packages()))) {
+  #library(utils)
+  if (!("cleaver" %in% rownames(utils::installed.packages()))) {
     packageStartupMessage(
-      paste0(
+      base::paste0(
         "Please install `cleaver` by",
         " `BiocManager::install('cleaver')`"
       )
     )
   }
-  if (!("PECA" %in% rownames(installed.packages()))) {
+  if (!("PECA" %in% rownames(utils::installed.packages()))) {
     packageStartupMessage(
-      paste0(
+      base::paste0(
         "Please install `PECA` by",
         " `BiocManager::install('PECA')`"
       )
@@ -28,6 +28,7 @@
 #' Start GUI of IceR
 #' @details Graphical user interface for IceR. Allows setting up of an IceR run, specification of variable parameters and visualization of quality control plots after successful requantification.
 #' @return IceR results are stored in a user-specified folder.
+#' @export
 runIceR <- function() {
   appDir <- system.file("shiny", "IceR_UI", package = "IceR")
   if (appDir == "") {
@@ -41,27 +42,24 @@ runIceR <- function() {
 #' @param Data Object of type data.frame or list
 #' @param File File name of xlsx-file
 #' @return xlsx-file
-
-###Save data.frames or list of data.frames as xlsx file (with separate tabs per list item)
-###Data = Data.frame or list of data.frames to be saved
-###File = File path where xlsx file should be saved
+#' @export
 SaveExcel = function(Data,File)
 {
-  wb <- createWorkbook("Data")
+  wb <- openxlsx::createWorkbook("Data")
   if(is.data.frame(Data))
   {
-    addWorksheet(wb, "Data")
-    writeData(wb, "Data",Data)
+    openxlsx::addWorksheet(wb, "Data")
+    openxlsx::writeData(wb, "Data",Data)
   }else
   {
     for(t in 1:length(Data))
     {
-      addWorksheet(wb, names(Data)[t])
-      writeData(wb, names(Data)[t],Data[[t]])
+      openxlsx::addWorksheet(wb, names(Data)[t])
+      openxlsx::writeData(wb, names(Data)[t],Data[[t]])
     }
   }
 
-  saveWorkbook(wb, File, overwrite = TRUE)
+  openxlsx::saveWorkbook(wb, File, overwrite = TRUE)
 }
 
 #' Load MaxQuant result files
@@ -73,6 +71,7 @@ SaveExcel = function(Data,File)
 #' @param intensity_used Specifying which protein quantification data should be used. Selection between "LFQ intensity", "iBAQ" or "Intensity". By default set to "LFQ intensity". Requires corresponding quantification results to be calculated by MaxQuant and stored in respective columns.
 #' @details Wrapper function to load and filter MaxQuant results.
 #' @return List object containing protein and peptide quantification information in sub-lists named Protein_level and Peptide_level, respectively.
+#' @export
 load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all","unique"),remove_contaminants=T,remove_reverse=T,intensity_used=c("LFQ intensity","iBAQ","Intensity"))
 {
   options(warn=-1)
@@ -80,17 +79,17 @@ load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all
   if(is.na(path))
   {
     print("Select a file in the MaxQ output folder")
-    path_to_MaxQ <- file.choose()
+    path_to_MaxQ <- base::file.choose()
     temp <- unlist(gregexpr("\\\\",path_to_MaxQ))
-    path_to_MaxQ <- substr(path_to_MaxQ,1,temp[length(temp)])
-    data_protein <- read.table(paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
-    data_peptide <- read.table(paste(path_to_MaxQ,"peptides.txt",sep=""),sep="\t",header=T)
-    print(paste("Selected path to MaxQuant output:",path_to_MaxQ))
+    path_to_MaxQ <- base::substr(path_to_MaxQ,1,temp[length(temp)])
+    data_protein <- utils::read.table(base::paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+    data_peptide <- utils::read.table(base::paste(path_to_MaxQ,"peptides.txt",sep=""),sep="\t",header=T)
+    print(base::paste("Selected path to MaxQuant output:",path_to_MaxQ))
   }else
   {
     path_to_MaxQ <- path
-    data_protein <- read.table(paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
-    data_peptide <- read.table(paste(path_to_MaxQ,"peptides.txt",sep=""),sep="\t",header=T)
+    data_protein <- utils::read.table(base::paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+    data_peptide <- utils::read.table(base::paste(path_to_MaxQ,"peptides.txt",sep=""),sep="\t",header=T)
   }
 
 
@@ -108,8 +107,8 @@ load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all
     data_peptide <- data_peptide[which(data_peptide$Reverse != "+"),]
   }
   ###Extract quant columns
-  intensity_used <- gsub(" ","\\\\.",intensity_used[1])
-  data_protein_quant <- data_protein[,which(grepl(paste(intensity_used,"\\.",sep=""),colnames(data_protein)))]
+  intensity_used <- base::gsub(" ","\\\\.",intensity_used[1])
+  data_protein_quant <- data_protein[,which(grepl(base::paste(intensity_used,"\\.",sep=""),colnames(data_protein)))]
   data_peptide_quant <- data_peptide[,which(grepl("Intensity\\.",colnames(data_peptide)))]
 
   ###Extract number of quantified peptides per protein and sample
@@ -121,13 +120,13 @@ load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all
   data_peptide_quant[data_peptide_quant == 0] <- NA
 
   ###log2 transform quant data
-  data_protein_quant <- log2(data_protein_quant)
-  data_peptide_quant <- log2(data_peptide_quant)
+  data_protein_quant <- base::log2(data_protein_quant)
+  data_peptide_quant <- base::log2(data_peptide_quant)
 
   ###prepare additional information per row on protein level
-  data_protein_info <- data.frame(Gene_name=str_split(data_protein$Gene.names,";",simplify = T)[,1],
-                                  ID=str_split(data_protein$Majority.protein.IDs,";",simplify = T)[,1],
-                                  Organism=substr(data_protein$Fasta.headers,regexpr("OS=",data_protein$Fasta.headers)+3,regexpr("GN=",data_protein$Fasta.headers)-2),
+  data_protein_info <- base::data.frame(Gene_name=stringr::str_split(data_protein$Gene.names,";",simplify = T)[,1],
+                                  ID=stringr::str_split(data_protein$Majority.protein.IDs,";",simplify = T)[,1],
+                                  Organism=base::substr(data_protein$Fasta.headers,regexpr("OS=",data_protein$Fasta.headers)+3,regexpr("GN=",data_protein$Fasta.headers)-2),
                                   num_peptides=data_protein$Peptides,
                                   num_unique_peptides=data_protein$Unique.peptides,
                                   Gene_names_all=data_protein$Gene.names,
@@ -142,13 +141,13 @@ load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all
     data_protein_info$Gene_name <- as.character(data_protein_info$Gene_name)
     data_protein_info$Gene_name[which(data_protein_info$Gene_name == "")] <- "Unassigned"
   }
-  data_protein_info$Gene_name <- make.unique(data_protein_info$Gene_name)
+  data_protein_info$Gene_name <- base::make.unique(data_protein_info$Gene_name)
 
   ###prepare additional information per row on peptide level
-  data_peptide_info <- data.frame(Sequence=data_peptide$Sequence,
-                                  Gene_name=str_split(data_peptide$Gene.names,";",simplify = T)[,1],
-                                  ID=str_split(data_peptide$Leading.razor.protein,";",simplify = T)[,1],
-                                  Organism=data_protein_info$Organism[match(str_split(data_peptide$Leading.razor.protein,";",simplify = T)[,1],data_protein_info$ID)],
+  data_peptide_info <- base::data.frame(Sequence=data_peptide$Sequence,
+                                  Gene_name=stringr::str_split(data_peptide$Gene.names,";",simplify = T)[,1],
+                                  ID=stringr::str_split(data_peptide$Leading.razor.protein,";",simplify = T)[,1],
+                                  Organism=data_protein_info$Organism[match(stringr::str_split(data_peptide$Leading.razor.protein,";",simplify = T)[,1],data_protein_info$ID)],
                                   Gene_names_all=data_peptide$Gene.names,
                                   IDs_major=data_peptide$Proteins,
                                   Start.position=data_peptide$Start.position,
@@ -202,66 +201,67 @@ load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all
 #' @param imputed Boolean value indicating if data with noise model based imputation should be used. By default set to T.
 #' @details Wrapper function to load and filter IceR results.
 #' @return List object containing protein and peptide quantification information in sub-lists named Protein_level and Peptide_level, respectively.
+#' @export
 load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=NA,file_name_extension=NA,path_MaxQ=NA,quant_value=c("LFQ","Total","Top3"),min_feat_count=1,min_feat_count_criteria=c("all","unique"),imputed=T)
 {
   options(warn=-1)
-  library(openxlsx)
+  #library(openxlsx)
   quant_value <- quant_value[1]
   min_feat_count_criteria <- min_feat_count_criteria[1]
 
   if(is.na(path_to_parameter_file) & is.na(path_to_requant_folder) & is.na(file_name_extension) & is.na(path_MaxQ))
   {
     print("Select Parameters.xlsx")
-    parameters <- read.xlsx(file.choose(),1)
-    path_to_requant_folder <- paste(parameters$Setting[3],"/",sep="")
-    file_name_extension <- paste("_",parameters$Setting[4],sep="")
-    path_to_MaxQ <- paste(parameters$Setting[2],"/",sep="")
-    MaxQ_data <- read.table(paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
-    MaxQ_data$Organism <- substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
-    MaxQ_data$ID <- str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+    parameters <- openxlsx::read.xlsx(base::file.choose(),1)
+    path_to_requant_folder <- base::paste(parameters$Setting[3],"/",sep="")
+    file_name_extension <- base::paste("_",parameters$Setting[4],sep="")
+    path_to_MaxQ <- base::paste(parameters$Setting[2],"/",sep="")
+    MaxQ_data <- utils::read.table(base::paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+    MaxQ_data$Organism <- base::substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
+    MaxQ_data$ID <- stringr::str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
   }else if(!is.na(path_to_parameter_file))
   {
-    parameters <- read.xlsx(path_to_parameter_file,1)
-    path_to_requant_folder <- paste(parameters$Setting[3],"/",sep="")
-    file_name_extension <- paste("_",parameters$Setting[4],sep="")
-    path_to_MaxQ <- paste(parameters$Setting[2],"/",sep="")
+    parameters <- openxlsx::read.xlsx(path_to_parameter_file,1)
+    path_to_requant_folder <- base::paste(parameters$Setting[3],"/",sep="")
+    file_name_extension <- base::paste("_",parameters$Setting[4],sep="")
+    path_to_MaxQ <- base::paste(parameters$Setting[2],"/",sep="")
   }else
   {
     if(is.na(path_to_requant_folder) | is.na(file_name_extension))
     {
       print("Select Features_x.tab file")
-      path_to_requant <- file.choose()
+      path_to_requant <- base::file.choose()
       temp <- unlist(gregexpr("\\\\",path_to_requant))
-      path_to_requant_folder <- substr(path_to_requant,1,temp[length(temp)])
-      file_name_extension <- substr(path_to_requant,temp[length(temp)]+1,200)
-      file_name_extension <- gsub("Features_|\\.tab","",file_name_extension)
+      path_to_requant_folder <- base::substr(path_to_requant,1,temp[length(temp)])
+      file_name_extension <- base::substr(path_to_requant,temp[length(temp)]+1,200)
+      file_name_extension <- base::gsub("Features_|\\.tab","",file_name_extension)
     }else
     {
-      file_name_extension <- paste("_",file_name_extension,sep="")
+      file_name_extension <- base::paste("_",file_name_extension,sep="")
     }
 
     if(is.na(path_MaxQ))
     {
       print("Select a file in the corresponding MaxQuant output folder")
-      path_to_MaxQ <- file.choose()
+      path_to_MaxQ <- base::file.choose()
       temp <- unlist(gregexpr("\\\\",path_to_MaxQ))
-      path_to_MaxQ <- substr(path_to_MaxQ,1,temp[length(temp)])
-      MaxQ_data <- read.table(paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
-      MaxQ_data$Organism <- substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
-      MaxQ_data$ID <- str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+      path_to_MaxQ <- base::substr(path_to_MaxQ,1,temp[length(temp)])
+      MaxQ_data <- utils::read.table(base::paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+      MaxQ_data$Organism <- base::substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
+      MaxQ_data$ID <- stringr::str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
 
     }else
     {
       path_to_MaxQ <- path_MaxQ
-      MaxQ_data <- read.table(paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
-      MaxQ_data$Organism <- substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
-      MaxQ_data$ID <- str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+      MaxQ_data <- utils::read.table(base::paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+      MaxQ_data$Organism <- base::substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
+      MaxQ_data$ID <- stringr::str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
     }
   }
 
-  print(paste("Selected path to IceR output:",path_to_requant_folder))
-  print(paste("Selected IceR output name:",file_name_extension))
-  print(paste("Selected path to MaxQuant output:",path_to_MaxQ))
+  print(base::paste("Selected path to IceR output:",path_to_requant_folder))
+  print(base::paste("Selected IceR output name:",file_name_extension))
+  print(base::paste("Selected path to MaxQuant output:",path_to_MaxQ))
 
   if(quant_value == "Total" & imputed == F)protein_quant_tab <- "Total"
   if(quant_value == "Total" & imputed == T)protein_quant_tab <- "Total_imputed"
@@ -271,14 +271,14 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
   if(quant_value == "LFQ" & imputed == T)protein_quant_tab <- "LFQ_imputed"
 
 
-  data_protein <- read.table(paste(path_to_requant_folder,"Proteins_quantification_",protein_quant_tab,file_name_extension,".tab",sep=""),header = T,sep = "\t")
-  colnames(data_protein) <- gsub("^X","",colnames(data_protein))
+  data_protein <- utils::read.table(base::paste(path_to_requant_folder,"Proteins_quantification_",protein_quant_tab,file_name_extension,".tab",sep=""),header = T,sep = "\t")
+  colnames(data_protein) <- base::gsub("^X","",colnames(data_protein))
 
-  features <- read.table(paste(path_to_requant_folder,"Features",file_name_extension,".tab",sep=""),header=T,sep = "\t")
-  features_sample_matrix <- read.table(paste(path_to_requant_folder,"Features_quantification",ifelse(imputed==T,"_imputed",""),file_name_extension,".tab",sep=""),header=T,sep = "\t")
-  features_sample_matrix_counts <- read.table(paste(path_to_requant_folder,"Features_quantification_ioncount",file_name_extension,".tab",sep=""),header=T,sep = "\t")
-  features_sample_matrix_pvals <- read.table(paste(path_to_requant_folder,"Features_quantification_pvals",file_name_extension,".tab",sep=""),header=T,sep = "\t")
-  features_sample_matrix_S2B <- read.table(paste(path_to_requant_folder,"Features_quantification_S2B",file_name_extension,".tab",sep=""),header=T,sep = "\t")
+  features <- utils::read.table(base::paste(path_to_requant_folder,"Features",file_name_extension,".tab",sep=""),header=T,sep = "\t")
+  features_sample_matrix <- utils::read.table(base::paste(path_to_requant_folder,"Features_quantification",ifelse(imputed==T,"_imputed",""),file_name_extension,".tab",sep=""),header=T,sep = "\t")
+  features_sample_matrix_counts <- utils::read.table(base::paste(path_to_requant_folder,"Features_quantification_ioncount",file_name_extension,".tab",sep=""),header=T,sep = "\t")
+  features_sample_matrix_pvals <- utils::read.table(base::paste(path_to_requant_folder,"Features_quantification_pvals",file_name_extension,".tab",sep=""),header=T,sep = "\t")
+  features_sample_matrix_S2B <- utils::read.table(base::paste(path_to_requant_folder,"Features_quantification_S2B",file_name_extension,".tab",sep=""),header=T,sep = "\t")
 
 
 
@@ -287,9 +287,9 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
   data_protein_S2B <- data_protein[,which(grepl("median_S2B",colnames(data_protein)))]
 
   ##prepare additional information per row on protein level
-  data_protein_info <- data.frame(Gene_name=str_split(data_protein$Gene_Name,";",simplify = T)[,1],
-                                  ID=str_split(data_protein$UniProt_Identifier,";",simplify = T)[,1],
-                                  Organism=MaxQ_data$Organism[match(str_split(data_protein$UniProt_Identifier,";",simplify = T)[,1],MaxQ_data$ID)],
+  data_protein_info <- base::data.frame(Gene_name=stringr::str_split(data_protein$Gene_Name,";",simplify = T)[,1],
+                                  ID=stringr::str_split(data_protein$UniProt_Identifier,";",simplify = T)[,1],
+                                  Organism=MaxQ_data$Organism[match(stringr::str_split(data_protein$UniProt_Identifier,";",simplify = T)[,1],MaxQ_data$ID)],
                                   num_quant_features=data_protein$num_quant_features,
                                   Gene_names_all=data_protein$Gene_Name)
   data_protein_info$Gene_name <- as.character(data_protein_info$Gene_name)
@@ -305,7 +305,7 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
 
   ##keep IDs which correspond to Major protein id from MaxQ
   keep <- which(data_protein_info$ID %in% features$Protein)###quantified by at least 1 unique feature
-  keep <- unique(append(keep,which(data_protein_info$ID %in% str_split(MaxQ_data$Protein.IDs[which(grepl(";",MaxQ_data$Protein.IDs))],";",simplify = T)[,1]))) ###also keep leading protein id if only quantified by overlapping peptides
+  keep <- unique(append(keep,which(data_protein_info$ID %in% stringr::str_split(MaxQ_data$Protein.IDs[which(grepl(";",MaxQ_data$Protein.IDs))],";",simplify = T)[,1]))) ###also keep leading protein id if only quantified by overlapping peptides
   data_protein <- data_protein[keep,]
   data_protein_quant <- data_protein_quant[keep,]
   data_protein_pvals <- data_protein_pvals[keep,]
@@ -313,7 +313,7 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
   data_protein_info <- data_protein_info[keep,]
 
   ##make gene names unique if some are existing duplicated
-  data_protein_info$Gene_name <- make.unique(data_protein_info$Gene_name)
+  data_protein_info$Gene_name <- base::make.unique(data_protein_info$Gene_name)
 
   ##filter feature data for either unknown feature or specific peptide sequence (no overlapping features)
   features_sample_matrix <- features_sample_matrix[which(!grepl(";|\\|",features$Sequence)),]
@@ -325,7 +325,7 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
 
   ###prepare additional information per row on feature level
   ##which protein ID should be kept in case if a peptide belongs to two or more protein IDs
-  multi_IDs <- str_split(features$Protein,";|\\|",simplify = T)
+  multi_IDs <- stringr::str_split(features$Protein,";|\\|",simplify = T)
   IDs_used <- vector(mode="character",length(nrow(features)))
   for(i in 1:nrow(multi_IDs))
   {
@@ -333,11 +333,11 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
   }
   IDs_used[is.na(IDs_used)] <- ""
 
-  data_peptide_info <- data.frame(Sequence=features$Sequence,
-                                  Gene_name=data_protein_info$Gene_name[match(str_split(features$Protein,";|\\|",simplify = T)[,1],data_protein_info$ID)],
+  data_peptide_info <- base::data.frame(Sequence=features$Sequence,
+                                  Gene_name=data_protein_info$Gene_name[match(stringr::str_split(features$Protein,";|\\|",simplify = T)[,1],data_protein_info$ID)],
                                   ID=IDs_used,
                                   Feature_name=features$Feature_name,
-                                  Organism=data_protein_info$Organism[match(str_split(features$Protein,";|\\|",simplify = T)[,1],data_protein_info$ID)],
+                                  Organism=data_protein_info$Organism[match(stringr::str_split(features$Protein,";|\\|",simplify = T)[,1],data_protein_info$ID)],
                                   Charge=features$Charge,
                                   IDs_major=features$Protein,
                                   Score=features$mean_Scores)
@@ -381,21 +381,21 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
 
   ###check if all protein quantifications were based on at least min_pep_count numbers of peptides
   #determine num of available peps per protein level quantification
-  temp <- copy(features_sample_matrix)
+  temp <- data.table::copy(features_sample_matrix)
   temp[!is.na(temp)] <- 1
   temp[is.na(temp)] <- 0
   if(min_feat_count_criteria == "unique")
   {
-    temp <- aggregate(temp,by=list(Sequence=features$Sequence),FUN=max,na.rm=T)
+    temp <- stats::aggregate(temp,by=list(Sequence=features$Sequence),FUN=max,na.rm=T)
     temp_id <- features$Protein[match(temp$Sequence,features$Sequence)]
     temp <- temp[,-1]
-    count_feat_per_ID <- aggregate(temp,by=list(ID=temp_id),FUN=sum,na.rm=T)
+    count_feat_per_ID <- stats::aggregate(temp,by=list(ID=temp_id),FUN=sum,na.rm=T)
   }else
   {
-    count_feat_per_ID <- aggregate(temp,by=list(ID=features$Protein),FUN=sum,na.rm=T)
+    count_feat_per_ID <- stats::aggregate(temp,by=list(ID=features$Protein),FUN=sum,na.rm=T)
   }
   count_feat_per_ID <- count_feat_per_ID[match(data_protein_info$ID,count_feat_per_ID$ID),]
-  #rownames(count_feat_per_ID) <- make.unique(as.character(count_feat_per_ID$ID))
+  #rownames(count_feat_per_ID) <- base::make.unique(as.character(count_feat_per_ID$ID))
   count_feat_per_ID <- count_feat_per_ID[,-1]
   data_protein_quant[count_feat_per_ID < min_feat_count] <- NA
 
@@ -433,6 +433,7 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
 #' @param Annotations Table with at least one column containing annotation information. Rows have to correspond to samples in loaded MaxQuant or IceR data. Requires same order of sampels (rows) as e.g. sampels (columns) in data_list$Protein_level$Quant_data
 #' @details Add sample annotation to loaded MaxQuant or IceR data.
 #' @return List object containing loaded MaxQuant or IceR data extended by annotation information
+#' @export
 add_annotations <- function(data_list,Annotations)
 {
   data_list$Annotations <- Annotations
@@ -444,6 +445,7 @@ add_annotations <- function(data_list,Annotations)
 #' @param sample_names Character vector of new names of same length as number of samples in MaxQuant or IceR data.
 #' @details Change sample names.
 #' @return List object containing loaded MaxQuant or IceR data with updated sample names.
+#' @export
 set_sample_names <- function(data_list,sample_names)
 {
   if("Quant_data" %in% names(data_list$Protein_level))colnames(data_list$Protein_level$Quant_data) <- sample_names
@@ -458,6 +460,7 @@ set_sample_names <- function(data_list,sample_names)
 #' @param data_list List object containing loaded MaxQuant or IceR data
 #' @details Determine general numbers of the data set like number of proteins, number of peptides and number of missing values
 #' @return List object containing loaded MaxQuant or IceR data extended with general number information.
+#' @export
 determine_general_numbers <- function(data_list)
 {
   if("Protein_level" %in% names(data_list))
@@ -468,7 +471,7 @@ determine_general_numbers <- function(data_list)
     data_list$Protein_level$num_prots <- temp
 
     ###number of proteins per samples
-    temp <- as.data.frame(t(as.matrix((colSums(!is.na(data_list$Protein_level$Quant_data))))))
+    temp <- base::as.data.frame(t(as.matrix((colSums(!is.na(data_list$Protein_level$Quant_data))))))
     data_list$Protein_level$num_prots_per_sample <- temp
 
     ###missing values on protein level - absolute and relative
@@ -505,7 +508,7 @@ determine_general_numbers <- function(data_list)
     data_list$Peptide_level$num_peptides <- temp
 
     ###number of peptides per samples
-    temp <- as.data.frame(t(as.matrix((colSums(!is.na(data_list$Peptide_level$Quant_data))))))
+    temp <- base::as.data.frame(t(as.matrix((colSums(!is.na(data_list$Peptide_level$Quant_data))))))
     data_list$Peptide_level$num_peptides_per_sample <- temp
   }
 
@@ -520,9 +523,10 @@ determine_general_numbers <- function(data_list)
 #' @param inset Inset of legend. By default set to c(-0.435,0)
 #' @details Compare general numbers between data sets
 #' @return Comparison plots
+#' @export
 compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),Legendpos = "top",margins=c(12,4,4,9),inset=c(-0.435,0))
 {
-  library(rowr)
+  #library(rowr)
   ###protein numbers
   dat_prot <- NULL
   names_available=NULL
@@ -535,7 +539,7 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
         dat_prot <- list_of_data_lists[[i]]$Protein_level$num_prots
       }else
       {
-        dat_prot <- full_join(dat_prot,list_of_data_lists[[i]]$Protein_level$num_prots,by="Organism")
+        dat_prot <- dplyr::full_join(dat_prot,list_of_data_lists[[i]]$Protein_level$num_prots,by="Organism")
       }
       names_available <- append(names_available,i)
     }
@@ -544,7 +548,7 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
   colnames(dat_prot)[2:ncol(dat_prot)] <- names_available
   orgs <- dat_prot$Organism
   dat_prot <- dat_prot[,-1]
-  dat_prot <- as.data.frame(t(dat_prot))
+  dat_prot <- base::as.data.frame(t(dat_prot))
   rownames(dat_prot) <- names_available
   colnames(dat_prot) <- orgs
 
@@ -561,7 +565,7 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
         dat_peps <- list_of_data_lists[[i]]$Peptide_level$num_peptides
       }else
       {
-        dat_peps <- full_join(dat_peps,list_of_data_lists[[i]]$Peptide_level$num_peptides,by="Organism")
+        dat_peps <- dplyr::full_join(dat_peps,list_of_data_lists[[i]]$Peptide_level$num_peptides,by="Organism")
       }
     }
 
@@ -569,7 +573,7 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
   colnames(dat_peps)[2:ncol(dat_peps)] <- names_available
   orgs <- dat_peps$Organism
   dat_peps <- dat_peps[,-1]
-  dat_peps <- as.data.frame(t(dat_peps))
+  dat_peps <- base::as.data.frame(t(dat_peps))
   rownames(dat_peps) <- names_available
   colnames(dat_peps) <- orgs
 
@@ -621,7 +625,7 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
                col=colors[which(names(list_of_data_lists) == i)],
                xlab = "",
                ylab="Count",
-               main=paste(i,"- Number of quantified proteins"))
+               main=base::paste(i,"- Number of quantified proteins"))
     }
     if("Peptide_level" %in% names(list_of_data_lists[[i]]))
     {
@@ -630,7 +634,7 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
                col=colors[which(names(list_of_data_lists) == i)],
                xlab = "",
                ylab="Count",
-               main=paste(i,"- Number of quantified peptides"))
+               main=base::paste(i,"- Number of quantified peptides"))
     }
   }
 }
@@ -650,6 +654,7 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
 #' @param round_to_k Indicate if CV counts should be rounded to 1000 (K). By default set to T.
 #' @details Compare CVs between data sets.
 #' @return Comparison plots
+#' @export
 plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),Legendpos = "topleft",margins=c(2,4,4,10),inset=c(-0.435,0),Annotation_column=1,plot_for=c("both","protein","peptide"),allow_missing_values=F,representation_of=c("total","per group","per intensity"),show_numbers=T,numbers_size=1,round_to_k=T)
 {
   plot_for <- plot_for[1]
@@ -664,20 +669,20 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
       ##protein
       temp_dat <- list_of_data_lists[[n]]$Protein_level$Quant_data_norm
       temp_anno <- list_of_data_lists[[n]]$Annotations[,Annotation_column]
-      SDs <- as.data.frame(matrix(ncol=4,nrow=nrow(temp_dat)*length(unique(temp_anno))))
+      SDs <- base::as.data.frame(matrix(ncol=4,nrow=nrow(temp_dat)*length(unique(temp_anno))))
       colnames(SDs) <- c("SD","Dilution","Method","Intensity")
       SDs$Dilution <- sort(rep(unique(temp_anno),nrow(temp_dat)))
-      SDs$Method <- paste("Protein_",n,sep="")
+      SDs$Method <- base::paste("Protein_",n,sep="")
       for(d in unique(temp_anno))
       {
         temp_dat_2 <- 2^as.matrix(temp_dat[,which(temp_anno==d)])
-        temp_sds <- rowSds(temp_dat_2,na.rm = allow_missing_values)
+        temp_sds <- matrixStats::rowSds(temp_dat_2,na.rm = allow_missing_values)
         temp_mean <- rowMeans(temp_dat_2,na.rm = allow_missing_values)
         temp_sds <- (temp_sds/temp_mean)*100
         #missing_val <- which(rowSums(is.na(temp_dat_2))>0)
         #temp_sds[missing_val] <- NA
         SDs[which(SDs$Dilution == d),1] <- temp_sds
-        SDs[which(SDs$Dilution == d),4] <- rowMedians(temp_dat_2,na.rm=T)
+        SDs[which(SDs$Dilution == d),4] <- matrixStats::rowMedians(temp_dat_2,na.rm=T)
       }
       SDs_protein_list[[n]] <- SDs
     }
@@ -689,27 +694,27 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
       # if(any(names(list_of_data_lists[[n]]$Peptide_level) == "Meta_data_full"))
       # {
       #   temp_dat <- temp_dat[which(!grepl("_i",list_of_data_lists[[n]]$Peptide_level$Meta_data$Feature_name)),]
-      #   # quant <- aggregate(2^temp_dat,by=list(Sequence = list_of_data_lists[[n]]$Peptide_level$Meta_data$Sequence),FUN=median,na.rm=T)
+      #   # quant <- stats::aggregate(2^temp_dat,by=list(Sequence = list_of_data_lists[[n]]$Peptide_level$Meta_data$Sequence),FUN=median,na.rm=T)
       #   # rownames(quant) <- quant[,1]
       #   # quant <- quant[,-1]
-      #   # temp_dat <- log2(quant)
+      #   # temp_dat <- base::log2(quant)
       # }
 
       temp_anno <- list_of_data_lists[[n]]$Annotations[,Annotation_column]
-      SDs <- as.data.frame(matrix(ncol=4,nrow=nrow(temp_dat)*length(unique(temp_anno))))
+      SDs <- base::as.data.frame(matrix(ncol=4,nrow=nrow(temp_dat)*length(unique(temp_anno))))
       colnames(SDs) <- c("SD","Dilution","Method","Intensity")
       SDs$Dilution <- sort(rep(unique(temp_anno),nrow(temp_dat)))
-      SDs$Method <- paste("Peptide_",n,sep="")
+      SDs$Method <- base::paste("Peptide_",n,sep="")
       for(d in unique(temp_anno))
       {
         temp_dat_2 <- 2^as.matrix(temp_dat[,which(temp_anno==d)])
-        temp_sds <- rowSds(temp_dat_2,na.rm = allow_missing_values)
+        temp_sds <- matrixStats::rowSds(temp_dat_2,na.rm = allow_missing_values)
         temp_mean <- rowMeans(temp_dat_2,na.rm = allow_missing_values)
         temp_sds <- (temp_sds/temp_mean)*100
         #missing_val <- which(rowSums(is.na(temp_dat_2))>0)
         #temp_sds[missing_val] <- NA
         SDs[which(SDs$Dilution == d),1] <- temp_sds
-        SDs[which(SDs$Dilution == d),4] <- rowMedians(temp_dat_2,na.rm=T)
+        SDs[which(SDs$Dilution == d),4] <- matrixStats::rowMedians(temp_dat_2,na.rm=T)
       }
       SDs_peptide_list[[n]] <- SDs
     }
@@ -772,22 +777,22 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
       }
     }
 
-    par_save <- par()
-    par(mar=margins)
+    par_save <- graphics::par()
+    graphics::par(mar=margins)
     ###plot
     if(plot_for %in% c("both","protein"))
     {
-      p <- boxplot(SDs_combined_protein$SD~SDs_combined_protein[,3],outline=F,las=2,col=colors,xaxt = "n",xlab="",ylab="CV [%]",main="Protein - Precision of quantification")
-      par(xpd=T)
-      legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_protein[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
-      par(xpd=F)
-      range_y <- par("usr")[4]-par("usr")[3]
+      p <- graphics::boxplot(SDs_combined_protein$SD~SDs_combined_protein[,3],outline=F,las=2,col=colors,xaxt = "n",xlab="",ylab="CV [%]",main="Protein - Precision of quantification")
+      graphics::par(xpd=T)
+      graphics::legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_protein[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
+      graphics::par(xpd=F)
+      range_y <- graphics::par("usr")[4]-graphics::par("usr")[3]
       if(show_numbers == T)
       {
         for(n in 1:length(names(SDs_protein_list)))
         {
           y <- p$stats[3,n]+(range_y*0.05)
-          text(n,y,paste(round(count_protein$freq[which(count_protein$x==sort(unique(SDs_combined_protein[,3]))[n])],digits = 0),unit_count_proteins,sep=""),cex=numbers_size)
+          graphics::text(n,y,base::paste(round(count_protein$freq[which(count_protein$x==sort(unique(SDs_combined_protein[,3]))[n])],digits = 0),unit_count_proteins,sep=""),cex=numbers_size)
         }
       }
 
@@ -795,17 +800,17 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
 
     if(plot_for %in% c("both","peptide"))
     {
-      p <- boxplot(SDs_combined_peptide$SD~SDs_combined_peptide$Method,outline=F,las=2,col=colors,xaxt = "n",xlab="",ylab="CV [%]",main="Peptide - Precision of quantification")
-      par(xpd=T)
-      legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_peptide[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
-      par(xpd=F)
-      range_y <- par("usr")[4]-par("usr")[3]
+      p <- graphics::boxplot(SDs_combined_peptide$SD~SDs_combined_peptide$Method,outline=F,las=2,col=colors,xaxt = "n",xlab="",ylab="CV [%]",main="Peptide - Precision of quantification")
+      graphics::par(xpd=T)
+      graphics::legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_peptide[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
+      graphics::par(xpd=F)
+      range_y <- graphics::par("usr")[4]-graphics::par("usr")[3]
       if(show_numbers == T)
       {
         for(n in 1:length(names(SDs_peptide_list)))
         {
           y <- p$stats[3,n]+(range_y*0.05)
-          text(n,y,paste(round(count_peptide$freq[which(count_peptide$x==sort(unique(SDs_combined_peptide[,3]))[n])],digits = 0),unit_count_peptides,sep=""),cex=numbers_size)
+          graphics::text(n,y,base::paste(round(count_peptide$freq[which(count_peptide$x==sort(unique(SDs_combined_peptide[,3]))[n])],digits = 0),unit_count_peptides,sep=""),cex=numbers_size)
         }
       }
     }
@@ -840,42 +845,42 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
       }
       count_peptide <- count_peptide[order(count_peptide[,2]),]
     }
-    par_save <- par()
-    par(mar=margins)
+    par_save <- graphics::par()
+    graphics::par(mar=margins)
     if(plot_for %in% c("both","protein"))names <- SDs_combined_protein[!duplicated(SDs_combined_protein[,2:3]),]
     if(plot_for %in% c("both","peptide"))names <- SDs_combined_peptide[!duplicated(SDs_combined_peptide[,2:3]),]
     names <- names[order(names[,2]),2]
     ###plot
     if(plot_for %in% c("both","protein"))
     {
-      p <- boxplot(SDs_combined_protein$SD~SDs_combined_protein$Method+SDs_combined_protein[,2],outline=F,las=2,col=colors,xlab="",names=names,ylab="CV [%]",main="Protein - Precision of quantification")
-      par(xpd=T)
-      legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_protein[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
-      par(xpd=F)
-      range_y <- par("usr")[4]-par("usr")[3]
+      p <- graphics::boxplot(SDs_combined_protein$SD~SDs_combined_protein$Method+SDs_combined_protein[,2],outline=F,las=2,col=colors,xlab="",names=names,ylab="CV [%]",main="Protein - Precision of quantification")
+      graphics::par(xpd=T)
+      graphics::legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_protein[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
+      graphics::par(xpd=F)
+      range_y <- graphics::par("usr")[4]-graphics::par("usr")[3]
       if(show_numbers == T)
       {
         for(n in 1:nrow(count_protein))
         {
           y <- p$stats[3,n]+(range_y*0.02)
-          text(n,y,paste(round(count_protein$freq[n],digits = 0),unit_count_proteins,sep=""),cex=numbers_size/2)
+          graphics::text(n,y,base::paste(round(count_protein$freq[n],digits = 0),unit_count_proteins,sep=""),cex=numbers_size/2)
         }
       }
     }
 
     if(plot_for %in% c("both","peptide"))
     {
-      p <- boxplot(SDs_combined_peptide$SD~SDs_combined_peptide$Method+SDs_combined_peptide[,2],outline=F,las=2,col=colors,names=names,xlab="",ylab="CV [%]",main="Peptide - Precision of quantification")
-      par(xpd=T)
-      legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_peptide[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
-      par(xpd=F)
-      range_y <- par("usr")[4]-par("usr")[3]
+      p <- graphics::boxplot(SDs_combined_peptide$SD~SDs_combined_peptide$Method+SDs_combined_peptide[,2],outline=F,las=2,col=colors,names=names,xlab="",ylab="CV [%]",main="Peptide - Precision of quantification")
+      graphics::par(xpd=T)
+      graphics::legend(Legendpos,inset=inset, legend = sort(unique(SDs_combined_peptide[,3])), fill = colors,cex=0.8,text.font=1,horiz=F,border = NA,bg="transparent",box.col = NA,ncol=1)
+      graphics::par(xpd=F)
+      range_y <- graphics::par("usr")[4]-graphics::par("usr")[3]
       if(show_numbers == T)
       {
         for(n in 1:nrow(count_peptide))
         {
           y <- p$stats[3,n]+(range_y*0.02)
-          text(n,y,paste(round(count_peptide$freq[n],digits = 0),unit_count_peptides,sep=""),cex=numbers_size/2)
+          graphics::text(n,y,base::paste(round(count_peptide$freq[n],digits = 0),unit_count_peptides,sep=""),cex=numbers_size/2)
         }
       }
     }
@@ -894,19 +899,19 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
 
         sel <- which(SDs_combined_protein$Method == m & !is.na(SDs_combined_protein$SD))
 
-        groups <- cut(log2(SDs_combined_protein$Intensity[sel]),breaks = 10)
+        groups <- cut(base::log2(SDs_combined_protein$Intensity[sel]),breaks = 10)
 
         counts <- plyr::count(groups)
         counts <- counts[which(!is.na(counts[,1])),]
 
-        boxplot(SDs_combined_protein$SD[sel]~groups,las=2,xlab="",ylab="CV [%]",outline=F,col=colors[ind],main=m,ylim=ylim)
+        graphics::boxplot(SDs_combined_protein$SD[sel]~groups,las=2,xlab="",ylab="CV [%]",outline=F,col=colors[ind],main=m,ylim=ylim)
 
-        ymax <- par("usr")[4]
+        ymax <- graphics::par("usr")[4]
         for(c in 1:10)
         {
-          text(c,ymax,counts[c,2],pos=1,cex=0.5)
+          graphics::text(c,ymax,counts[c,2],pos=1,cex=0.5)
         }
-        text(10.5,ymax,sum(counts[,2]),pos=1,cex=0.5,font=2)
+        graphics::text(10.5,ymax,sum(counts[,2]),pos=1,cex=0.5,font=2)
       }
     }
 
@@ -920,19 +925,19 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
 
         sel <- which(SDs_combined_peptide$Method == m & !is.na(SDs_combined_peptide$SD))
 
-        groups <- cut(log2(SDs_combined_peptide$Intensity[sel]),breaks = 10)
+        groups <- cut(base::log2(SDs_combined_peptide$Intensity[sel]),breaks = 10)
 
         counts <- plyr::count(groups)
         counts <- counts[which(!is.na(counts[,1])),]
 
-        boxplot(SDs_combined_peptide$SD[sel]~groups,las=2,xlab="",ylab="CV [%]",outline=F,col=colors[ind],main=m,ylim=ylim)
+        graphics::boxplot(SDs_combined_peptide$SD[sel]~groups,las=2,xlab="",ylab="CV [%]",outline=F,col=colors[ind],main=m,ylim=ylim)
 
-        ymax <- par("usr")[4]
+        ymax <- graphics::par("usr")[4]
         for(c in 1:10)
         {
-          text(c,ymax,counts[c,2],pos=1,cex=0.5)
+          graphics::text(c,ymax,counts[c,2],pos=1,cex=0.5)
         }
-        text(10.5,ymax,sum(counts[,2]),pos=1,cex=0.5,font=2)
+        graphics::text(10.5,ymax,sum(counts[,2]),pos=1,cex=0.5,font=2)
       }
     }
 
@@ -942,9 +947,9 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
 
 
   #n <- length(names(list_of_data_lists))
-  #axis(1, at = 0:1*n + (n-(0.5*(n-1))), labels = c("Peptide-level","Protein-level"), tick = TRUE)
+  #graphics::axis(1, at = 0:1*n + (n-(0.5*(n-1))), labels = c("Peptide-level","Protein-level"), tick = TRUE)
 
-  #legend(Legendpos,inset=c(-0.12,0), legend = names(list_of_data_lists), fill = colors,cex=0.8,ncol=1,text.font=1,horiz=T,border = NA,bg="transparent",box.col = NA)
+  #graphics::legend(Legendpos,inset=c(-0.12,0), legend = names(list_of_data_lists), fill = colors,cex=0.8,ncol=1,text.font=1,horiz=T,border = NA,bg="transparent",box.col = NA)
 }
 
 ###Visualize data set on protein or peptide level in a heatmap
@@ -959,7 +964,7 @@ plot_accuracy <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),L
 ###row_order integer vector indicating in which order rows should be plotted
 visualize_dataset_heatmap <- function(data_list,annotation=NULL,colors_annotation=NULL,subset_rows=NULL,subset_columns=NULL,used_quant=c("norm","raw"),quant_level=c("protein","peptide"),breaks=NULL,colors_plot=c("deepskyblue","firebrick"),main="",annotation_name="Sample",row_order = NULL,show_rownames=F,rownames=NULL,remove_NA_rows=T,hclust_col=F,hclust_row=F)
 {
-  library(grDevices)
+  #library(grDevices)
   used_quant <- used_quant[1]
   quant_level <- quant_level[1]
   ##Only plot a subset of features?
@@ -972,7 +977,7 @@ visualize_dataset_heatmap <- function(data_list,annotation=NULL,colors_annotatio
   if(!is.data.frame(annotation))
   {
     annotation <- annotation[subset_columns]
-    annotation <- data.frame(anno=annotation)
+    annotation <- base::data.frame(anno=annotation)
 
   }else
   {
@@ -997,8 +1002,8 @@ visualize_dataset_heatmap <- function(data_list,annotation=NULL,colors_annotatio
   {
     if(ncol(annotation) == 1)
     {
-      temp_dat <- temp_dat[,do.call(order, as.data.frame(annotation[, 1:ncol(annotation)]))]
-      annotation <- as.data.frame(annotation[do.call(order, as.data.frame(annotation[, 1:ncol(annotation)])),])
+      temp_dat <- temp_dat[,do.call(order, base::as.data.frame(annotation[, 1:ncol(annotation)]))]
+      annotation <- base::as.data.frame(annotation[do.call(order, base::as.data.frame(annotation[, 1:ncol(annotation)])),])
       colnames(annotation) <- "anno"
     }else
     {
@@ -1014,18 +1019,18 @@ visualize_dataset_heatmap <- function(data_list,annotation=NULL,colors_annotatio
   {
     if(is.null(annotation))
     {
-      colors_annotation <- hcl.colors(ncol(temp_dat), alpha = 1, rev = FALSE)
+      colors_annotation <- grDevices::hcl.colors(ncol(temp_dat), alpha = 1, rev = FALSE)
       names(colors_annotation) <- colnames(temp_dat)
     }else
     {
-      colors_annotation <- hcl.colors(length(unique(annotation[,1])), alpha = 1, rev = FALSE)
+      colors_annotation <- grDevices::hcl.colors(length(unique(annotation[,1])), alpha = 1, rev = FALSE)
       names(colors_annotation) <- unique(annotation[,1])
 
       # colors_annotation <- list()
       #
       # for(c in 1:ncol(annotation))
       # {
-      #   colors_annotation[[c]] <- hcl.colors(length(unique(annotation[,c])), alpha = 1, rev = FALSE)
+      #   colors_annotation[[c]] <- grDevices::hcl.colors(length(unique(annotation[,c])), alpha = 1, rev = FALSE)
       #   names(colors_annotation[[c]]) <- unique(annotation[,c])
       # }
       # names(colors_annotation) <- colnames(annotation)
@@ -1093,7 +1098,7 @@ visualize_dataset_heatmap <- function(data_list,annotation=NULL,colors_annotatio
   }
 
   ##plot
-  Heatmap(data = temp_dat,annotation_col = annotation,colors_annotation_col = colors_annotation,hclust_col = hclust_col,hclust_row = hclust_row,show_rownames = show_rownames,colors_plot = colors_plot,color_breaks = breaks,main=main,annotation_name_col = annotation_name,row_labels=rownames)
+  Heatmap(data = temp_dat,annotation = annotation,colors_annotation = colors_annotation,hclust_col = hclust_col,hclust_row = hclust_row,show_rownames = show_rownames,colors_plot = colors_plot,color_breaks = breaks,main=main,annotation_name = annotation_name,row_labels=rownames)
 
 }
 
@@ -1105,11 +1110,12 @@ visualize_dataset_heatmap <- function(data_list,annotation=NULL,colors_annotatio
 #' @param main Titel of plots
 #' @details Normalize quantification data
 #' @return Table with normalized quantifications and density plots.
+#' @export
 normalize_data <- function(data,method=c("median","density","vsn"),norm_to=NULL,norm_on_subset=NULL,main="Data")
 {
   method <- method[1]
   if(is.null(norm_on_subset))norm_on_subset <- 1:nrow(data)
-  densityplots(data[norm_on_subset,],main=paste(main,"- Raw"),xlab="Intensity, log2",col = "black")
+  densityplots(data[norm_on_subset,],main=base::paste(main,"- Raw"),xlab="Intensity, log2",col = "black")
 
   if(method %in% c("density","median"))
   {
@@ -1123,7 +1129,7 @@ normalize_data <- function(data,method=c("median","density","vsn"),norm_to=NULL,
     }
     if(method == "median")
     {
-      maxima <- colMedians(as.matrix(data[norm_on_subset,]),na.rm=T)
+      maxima <- matrixStats::colMedians(as.matrix(data[norm_on_subset,]),na.rm=T)
     }
 
     if(is.null(norm_to))norm_to <- mean(maxima,na.rm=T)
@@ -1138,20 +1144,38 @@ normalize_data <- function(data,method=c("median","density","vsn"),norm_to=NULL,
 
   if(method == "vsn")
   {
-    library("vsn")
-    data_norm <- as.data.frame(justvsn(as.matrix(2^data)))
+    #library("vsn")
+    data_norm <- base::as.data.frame(vsn::justvsn(as.matrix(2^data)))
   }
 
-  densityplots(data_norm,main=paste(main,"- Normalized"),xlab="Intensity, log2",col = "black")
+  densityplots(data_norm,main=base::paste(main,"- Normalized"),xlab="Intensity, log2",col = "black")
   return(data_norm)
 }
 
-###Barplot stacked
-#order_groups --> order table according to group names and plot with trellis
-#group_names --> character vector of length ncol(Data) indicating which col belongs to which group
+#' Generate stacked barplots
+#' @param Data Numeric vector or table of samples in columns
+#' @param Name Names
+#' @param ylab Y-Axis label
+#' @param logy Y-Axis in log-scale?
+#' @param main Plot main title
+#' @param col Color
+#' @param AvgLine Show average line?
+#' @param Legends Legends
+#' @param Legendtitle Titel for legends
+#' @param Legendpos Legend position
+#' @param shownumbers Show numbers on top of bars
+#' @param shownumbers_total Show total numbers
+#' @param order_groups Order groups
+#' @param group_names Group names
+#' @param ylim y-axis limits
+#' @param margins Margins
+#' @param inset Inset for legend
+#' @details Generate stacked barplots
+#' @return Plot.
+#' @export
 Barplotsstacked = function(Data,Name="",ylab="Y-axis",logy=F,main="Titel",col="lightblue",AvgLine=T,Legends=NA,Legendtitle="Legend",Legendpos = "topright",shownumbers=T,shownumbers_total=T,order_groups=F,group_names="",ylim=NULL,margins=c(12,4,4,9),inset=c(-0.3,0))
 {
-  orig_par <- par()
+  orig_par <- graphics::par()
   curdata <- as.matrix(Data)
   curdata[which(is.na(curdata))] <- 0
   if(any(is.na(Name))){
@@ -1173,10 +1197,10 @@ Barplotsstacked = function(Data,Name="",ylab="Y-axis",logy=F,main="Titel",col="l
   }
   if(order_groups == T)
   {
-    par(mar=margins,xpd=F)
+    graphics::par(mar=margins,xpd=F)
   }else
   {
-    par(mar=margins,xpd=F)
+    graphics::par(mar=margins,xpd=F)
   }
   if(is.null(ylim))
   {
@@ -1196,26 +1220,26 @@ Barplotsstacked = function(Data,Name="",ylab="Y-axis",logy=F,main="Titel",col="l
     logy = F
   }
 
-  if(logy == F)mids <- barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",ylim=c(ymin,ymax))
-  if(logy == T)mids <- barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",ylim=c(ymin,ymax),log="y")
+  if(logy == F)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",ylim=c(ymin,ymax))
+  if(logy == T)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",ylim=c(ymin,ymax),log="y")
 
 
-  axis(1, at=mids, labels=names, las=3,cex.axis=0.6)
+  graphics::axis(1, at=mids, labels=names, las=3,cex.axis=0.6)
   if(AvgLine == T)
   {
-    abline(h=mean(curdata,na.rm=T),lty=2)
-    par(xpd=T)
-    text(par("usr")[2]+1,mean(curdata,na.rm=T),round(mean(curdata,na.rm=T),digits=0))
+    graphics::abline(h=mean(curdata,na.rm=T),lty=2)
+    graphics::par(xpd=T)
+    graphics::text(graphics::par("usr")[2]+1,mean(curdata,na.rm=T),round(mean(curdata,na.rm=T),digits=0))
   }
 
   if(!is.na(Legends))
   {
-    par(xpd=T)
-    defaultpar <- par()
-    par(font=2)
-    legend(Legendpos,inset=inset, legend = Legends, fill = col,cex=0.8, title=Legendtitle,title,ncol=1,text.font=1)
-    par(defaultpar)
-    par(xpd=F)
+    graphics::par(xpd=T)
+    defaultpar <- graphics::par()
+    graphics::par(font=2)
+    graphics::legend(Legendpos,inset=inset, legend = Legends, fill = col,cex=0.8, title=Legendtitle,ncol=1,text.font=1)
+    graphics::par(defaultpar)
+    graphics::par(xpd=F)
   }
 
   if(shownumbers == T)
@@ -1235,7 +1259,7 @@ Barplotsstacked = function(Data,Name="",ylab="Y-axis",logy=F,main="Titel",col="l
             y <- sum(curdata[1:j-1,i],na.rm=T)
           }
           y <- y + (curdata[j,i]/2)
-          text(x,y,labels = round(curdata[j,i],digits=1),cex=0.7)
+          graphics::text(x,y,labels = round(curdata[j,i],digits=1),cex=0.7)
         }
       }
     }
@@ -1248,7 +1272,7 @@ Barplotsstacked = function(Data,Name="",ylab="Y-axis",logy=F,main="Titel",col="l
       x <- mids[i]
       ###plot label complete bar
       y <- sum(curdata[1:nrow(curdata),i],na.rm=T)
-      text(x,y,labels = round(y,digits=1),cex=0.7,pos=3)
+      graphics::text(x,y,labels = round(y,digits=1),cex=0.7,pos=3)
     }
   }
 
@@ -1259,19 +1283,19 @@ Barplotsstacked = function(Data,Name="",ylab="Y-axis",logy=F,main="Titel",col="l
   ###order samples by groups trellis
   if(order_groups == T & logy == F)
   {
-    abline(h=par("usr")[4])
+    graphics::abline(h=graphics::par("usr")[4])
     for(g in sort(unique(group_names)))
     {
       indices <- which(sort(group_names) == g)
 
       if(min(indices) == 1)
       {
-        abline(v=mids[min(indices)]-0.625)
+        graphics::abline(v=mids[min(indices)]-0.625)
       }
-      abline(v=mids[max(indices)]+0.625)
-      par(xpd=T)
-      text(mean(c(mids[min(indices)],mids[max(indices)])),par("usr")[4]+(par("usr")[4]-par("usr")[3])*0.05,g)
-      par(xpd=F)
+      graphics::abline(v=mids[max(indices)]+0.625)
+      graphics::par(xpd=T)
+      graphics::text(mean(c(mids[min(indices)],mids[max(indices)])),graphics::par("usr")[4]+(graphics::par("usr")[4]-graphics::par("usr")[3])*0.05,g)
+      graphics::par(xpd=F)
 
     }
   }
@@ -1280,12 +1304,35 @@ Barplotsstacked = function(Data,Name="",ylab="Y-axis",logy=F,main="Titel",col="l
 
 
 
-  par(orig_par)
+  graphics::par(orig_par)
   return(mids)
 }
+
+#' Generate side-by-side barplots
+#' @param Data Numeric vector or table of samples in columns
+#' @param ErrbarData Data for errorbars
+#' @param Name Names
+#' @param ylab Y-Axis label
+#' @param logy Y-Axis in log-scale?
+#' @param main Plot main title
+#' @param col Color
+#' @param AvgLine Show average line?
+#' @param Legends Legends
+#' @param Legendtitle Titel for legends
+#' @param Legendpos Legend position
+#' @param shownumbers Show numbers on top of bars
+#' @param shownumbers_digits Number of digits for shown numbers
+#' @param separation Indicate separation bars
+#' @param horiz_line Show horizontal lines
+#' @param ylim y-axis limits
+#' @param margins Margins
+#' @param inset Inset for legend
+#' @details Generate side-by-side barplots
+#' @return Plot.
+#' @export
 BarplotsSBS = function(Data,ErrbarData=NA,Name="",ylab="Y-axis",main="Titel",col="lightblue",AvgLine=T,Legends=NA,Legendtitle="Legend",Legendpos = "topright",ylim=NA,logy=F,shownumbers=F,shownumbers_digits=1,separation=T,horiz_line=NULL,margins=c(8,4,4,4),inset=c(-0.1,0))
 {
-  orig_par <- par()
+  orig_par <- graphics::par()
   curdata <- as.matrix(Data)
 
   if(any(is.na(Name))){
@@ -1299,22 +1346,22 @@ BarplotsSBS = function(Data,ErrbarData=NA,Name="",ylab="Y-axis",main="Titel",col
   {
     names <- colnames(Data)
   }
-  par(mar=margins,xpd=F)
+  graphics::par(mar=margins,xpd=F)
   if(is.na(ylim))
   {
-    if(logy == F)mids <- barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",beside=T)
-    if(logy == T)mids <- barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",beside=T,log="y")
+    if(logy == F)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",beside=T)
+    if(logy == T)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",beside=T,log="y")
   }else
   {
-    if(logy == F)mids <- barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",beside=T,ylim = ylim)
-    if(logy == T)mids <- barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",beside=T,ylim = ylim,log="y")
+    if(logy == F)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",beside=T,ylim = ylim)
+    if(logy == T)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",beside=T,ylim = ylim,log="y")
   }
 
   if(separation == T)
   {
     for(i in 1:ncol(mids)-1)
     {
-      abline(v=mids[nrow(mids),i]+1,lty=2)
+      graphics::abline(v=mids[nrow(mids),i]+1,lty=2)
     }
 
   }
@@ -1323,34 +1370,34 @@ BarplotsSBS = function(Data,ErrbarData=NA,Name="",ylab="Y-axis",main="Titel",col
   {
     for(i in 1:ncol(curdata))
     {
-      errbar(mids[,i],curdata[,i], curdata[,i]+ErrbarData[,i], curdata[,i]-ErrbarData[,i], add=T, pch=26, cap=.01)
+      Hmisc::errbar(mids[,i],curdata[,i], curdata[,i]+ErrbarData[,i], curdata[,i]-ErrbarData[,i], add=T, pch=26, cap=.01)
     }
 
   }
 
-  axis(1, at=colMeans(mids), labels=names, las=3,cex.axis=0.9)
+  graphics::axis(1, at=colMeans(mids), labels=names, las=3,cex.axis=0.9)
   if(AvgLine == T)
   {
-    abline(h=mean(curdata,na.rm=T),lty=2)
-    par(xpd=T)
-    text(par("usr")[2]+1,mean(curdata,na.rm=T),round(mean(curdata,na.rm=T),digits=0))
+    graphics::abline(h=mean(curdata,na.rm=T),lty=2)
+    graphics::par(xpd=T)
+    graphics::text(graphics::par("usr")[2]+1,mean(curdata,na.rm=T),round(mean(curdata,na.rm=T),digits=0))
   }
 
   if(!is.null(horiz_line))
   {
-    par(xpd=F)
-    abline(h=horiz_line,lty=2)
+    graphics::par(xpd=F)
+    graphics::abline(h=horiz_line,lty=2)
   }
 
   if(!is.na(Legends))
   {
-    par(xpd=T)
-    defaultpar <- par()
-    par(font=2)
-    legend(Legendpos,inset=inset, legend = Legends, fill = col,cex=0.8, title=Legendtitle,title,ncol=1,text.font=1)
-    par(defaultpar)
+    graphics::par(xpd=T)
+    defaultpar <- graphics::par()
+    graphics::par(font=2)
+    graphics::legend(Legendpos,inset=inset, legend = Legends, fill = col,cex=0.8, title=Legendtitle,ncol=1,text.font=1)
+    graphics::par(defaultpar)
   }
-  par(xpd=T)
+  graphics::par(xpd=T)
   if(shownumbers == T)
   {
     for(i in 1:length(curdata))
@@ -1358,16 +1405,40 @@ BarplotsSBS = function(Data,ErrbarData=NA,Name="",ylab="Y-axis",main="Titel",col
       x <- mids[i]
       ###plot label complete bar
       y <- curdata[i]
-      text(x,y,labels = round(y,digits = shownumbers_digits),cex=0.7,pos=3,srt=90,offset = 1)
+      graphics::text(x,y,labels = round(y,digits = shownumbers_digits),cex=0.7,pos=3,srt=90,offset = 1)
     }
   }
-  par(xpd=F)
-  par(orig_par)
+  graphics::par(xpd=F)
+  graphics::par(orig_par)
   return(mids)
 }
+
+#' Generate barplots
+#' @param Data Numeric vector or table of samples in columns
+#' @param ErrbarData Data for errorbars
+#' @param Name Names
+#' @param xlab X-Axis label
+#' @param ylab Y-Axis label
+#' @param main Plot main title
+#' @param col Color
+#' @param AvgLine Show average line?
+#' @param digits_average Number of digits of average indication
+#' @param Legends Legends
+#' @param Legendtitle Titel for legends
+#' @param Legendpos Legend position
+#' @param shownumbers Show numbers on top of bars
+#' @param shownumbers_digits Number of digits for shown numbers
+#' @param ylim y-axis limits
+#' @param logy Y-Axis in log-scale?
+#' @param margins Margins
+#' @param inset Inset for legend
+#' @param Legendscol Color of legends
+#' @details Generate barplots
+#' @return Plot.
+#' @export
 Barplots = function(Data,ErrbarData=NA,Name="",xlab="X-axis",ylab="Y-axis",main="Titel",col="lightblue",AvgLine=T,digits_average=0,Legends=NA,Legendscol=NA,Legendtitle="Legend",Legendpos = "topright",shownumbers=T,shownumbers_digits=1,ylim=NA,logy=F,margins=c(10.1,4.1,4.1,4.1),inset=c(-0.1,0))
 {
-  #orig_par <- par()
+  #orig_par <- graphics::par()
   curdata <- as.numeric(Data)
 
   if(any(is.na(Name))){
@@ -1381,41 +1452,41 @@ Barplots = function(Data,ErrbarData=NA,Name="",xlab="X-axis",ylab="Y-axis",main=
   {
     names <- colnames(Data)
   }
-  par(mar=margins,xpd=F)
+  graphics::par(mar=margins,xpd=F)
 
   if(is.na(ylim))
   {
-    if(logy == F)mids <- barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n")
-    if(logy == T)mids <- barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",log="y")
+    if(logy == F)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n")
+    if(logy == T)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",log="y")
   }else
   {
-    if(logy == F)mids <- barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",ylim = ylim)
-    if(logy == T)mids <- barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",ylim = ylim,log="y")
+    if(logy == F)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",ylim = ylim)
+    if(logy == T)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",ylim = ylim,log="y")
   }
 
 
 
-  title(xlab = xlab)
+  graphics::title(xlab = xlab)
   if(!is.na(ErrbarData))
   {
-    errbar(mids,curdata, as.numeric(curdata+ErrbarData), as.numeric(curdata-ErrbarData), add=T, pch=26, cap=.01)
+    Hmisc::errbar(mids,curdata, as.numeric(curdata+ErrbarData), as.numeric(curdata-ErrbarData), add=T, pch=26, cap=.01)
   }
-  axis(1, at=mids, labels=names, las=3,cex.axis=0.9)
+  graphics::axis(1, at=mids, labels=names, las=3,cex.axis=0.9)
   if(AvgLine == T)
   {
-    abline(h=mean(curdata,na.rm=T),lty=2)
-    par(xpd=T)
-    text(par("usr")[2]+1,mean(curdata,na.rm=T),round(mean(curdata,na.rm=T),digits=digits_average))
+    graphics::abline(h=mean(curdata,na.rm=T),lty=2)
+    graphics::par(xpd=T)
+    graphics::text(graphics::par("usr")[2]+1,mean(curdata,na.rm=T),round(mean(curdata,na.rm=T),digits=digits_average))
   }
   if(!is.na(Legends))
   {
-    par(xpd=T)
-    defaultpar <- par()
-    par(font=2)
-    legend(Legendpos,inset=inset, legend = Legends, fill = Legendscol,cex=0.8, title=Legendtitle,title,ncol=1,text.font=1)
-    par(defaultpar)
+    graphics::par(xpd=T)
+    defaultpar <- graphics::par()
+    graphics::par(font=2)
+    graphics::legend(Legendpos,inset=inset, legend = Legends, fill = Legendscol,cex=0.8, title=Legendtitle,ncol=1,text.font=1)
+    graphics::par(defaultpar)
   }
-  par(xpd=T)
+  graphics::par(xpd=T)
   if(shownumbers == T)
   {
     for(i in 1:length(curdata))
@@ -1423,19 +1494,29 @@ Barplots = function(Data,ErrbarData=NA,Name="",xlab="X-axis",ylab="Y-axis",main=
       x <- mids[i]
       ###plot label complete bar
       y <- curdata[i]
-      text(x,y,labels = round(y,digits = shownumbers_digits),cex=0.7,pos=3)
+      graphics::text(x,y,labels = round(y,digits = shownumbers_digits),cex=0.7,pos=3)
     }
   }
-  par(xpd=F)
-  #par(orig_par)
+  graphics::par(xpd=F)
+  #graphics::par(orig_par)
   return(mids)
 }
 
-###plot density plots for data.frame with columns = samples and rows = observations
+#' Density plots
+#' @param datafcs Data.frame
+#' @param names Names per samples in columns
+#' @param col Colors per sample in columns
+#' @param main Plot main title
+#' @param xlab X-Axis label
+#' @param xlim X-axis limits
+#' @param lwd Line width
+#' @details Plot density plots for data.frame with columns = samples and rows = observations
+#' @return Plot.
+#' @export
 densityplots = function(datafcs,names=NA,col=NA,main="",xlab="",xlim=NA,lwd=2)
 {
-  #default_par <- par() #save par
-  par(mar=c(5.1, 4.1, 4.1, 6.1))
+  #default_par <- graphics::par() #save par
+  graphics::par(mar=c(5.1, 4.1, 4.1, 6.1))
   #####datafcs should contain only cols containg data for which density should be displayed
   densitys <- list()
   datafcs[sapply(datafcs, is.infinite)] <- NA
@@ -1444,7 +1525,7 @@ densityplots = function(datafcs,names=NA,col=NA,main="",xlab="",xlim=NA,lwd=2)
   {
     if(!is.na(sum(unique(datafcs[,i]),na.rm=T)) & length(unique(datafcs[,i])) > 1 | length(unique(datafcs[,i])) == 1 & !is.na(unique(datafcs[,i])[1]))
     {
-      densitys[[i]] <- density(datafcs[,i],na.rm=T)
+      densitys[[i]] <- stats::density(datafcs[,i],na.rm=T)
       if(max(densitys[[i]]$y) > densmax & length(unique(datafcs[,i])) > 1) ### only if its not the reference
       {
         densmax <- max(densitys[[i]]$y)
@@ -1455,7 +1536,7 @@ densityplots = function(datafcs,names=NA,col=NA,main="",xlab="",xlim=NA,lwd=2)
     }
 
   }
-  if(is.na(col)){col <- randomColor(ncol(datafcs))}
+  if(is.na(col)){col <- randomcoloR::randomColor(ncol(datafcs))}
   if(length(col) == 1){col <- rep(col,ncol(datafcs))}
   counter = 0
   for(i in 1:ncol(datafcs))
@@ -1475,49 +1556,60 @@ densityplots = function(datafcs,names=NA,col=NA,main="",xlab="",xlim=NA,lwd=2)
 
       }else
       {
-        lines(densitys[[i]],col=col[i],lwd=lwd)
+        graphics::lines(densitys[[i]],col=col[i],lwd=lwd)
       }
       x <- maxDensity(datafcs[,i])
-      segments(x0 = x,x1 = x, y0 = 0, y1 = max(densitys[[i]]$y),lty=2,col="grey")
+      graphics::segments(x0 = x,x1 = x, y0 = 0, y1 = max(densitys[[i]]$y),lty=2,col="grey")
     }
   }
 
   if(!is.na(names))
   {
-    par(xpd=T)
-    par(font=2)
-    legend("topright",inset=c(-0.25,0), legend = names, fill = col,cex=0.8, title="Samples",title,ncol=1,text.font=1)
-    par(xpd=F)
+    graphics::par(xpd=T)
+    graphics::par(font=2)
+    graphics::legend("topright",inset=c(-0.25,0), legend = names, fill = col,cex=0.8, title="Samples",ncol=1,text.font=1)
+    graphics::par(xpd=F)
   }
-  #par(default_par)
-  #par(xpd=F)
+  #graphics::par(default_par)
+  #graphics::par(xpd=F)
 }
 
-####Heatmap visualization of data
-####data = data.frame, rows = observations, cols = samples
-####annotation = vector of length ncol(data), classifying each sample to a class or data frame with different annotations in cols
-####annotation_name = a name for the classification e.g. Tumor or a vector of names if more than one annotation should be plotted
-####colors_annotation = a named vector with colors if only one annotation should be used or a list of named color vectors
-####colors = named vector with names = unique(annotation)
-####colors_plot = color vector of length 2 or 3
+#' Heatmap visualization of data
+#' @param data Data.frame
+#' @param annotation Conditions per samples in columns of data
+#' @param annotation_name Displayed name for annotation
+#' @param main Plot main title
+#' @param colors_annotation Annotation colors
+#' @param colors_plot Colors for heatmap
+#' @param color_breaks Color breaks for heatmap
+#' @param hclust_col Cluster cols?
+#' @param hclust_row Cluster rows?
+#' @param show_rownames Show rownames?
+#' @param show_colnames Show colnames?
+#' @param fontsize_rows Fontsize of rows
+#' @param interactive Interactive heatmap
+#' @param row_labels Special rowlabels
+#' @details Heatmap visualization of data
+#' @return Plot.
+#' @export
 Heatmap <- function(data,annotation,annotation_name="Anno",main="Heatmap",colors_annotation,colors_plot=NA,color_breaks=NA,hclust_col=T,hclust_row=T,show_rownames=T,show_colnames=F,fontsize_rows=10,interactive=F,row_labels=NULL)
 {
-  library(gplots)
-  library(pheatmap)
-  library(heatmaply)
+  #library(gplots)
+  #library(pheatmap)
+  #library(heatmaply)
 
   if(any(is.na(colors_plot)))
   {
-    colors_plot <- bluered(100)
+    colors_plot <- gplots::bluered(100)
   }else
   {
     if(length(colors_plot) == 2)
     {
-      colors_plot <- colorpanel(100,colors_plot[1],colors_plot[2])
+      colors_plot <- gplots::colorpanel(100,colors_plot[1],colors_plot[2])
     }
     if(length(colors_plot) == 2)
     {
-      colors_plot <- colorpanel(100,colors_plot[1],colors_plot[2],colors_plot[3])
+      colors_plot <- gplots::colorpanel(100,colors_plot[1],colors_plot[2],colors_plot[3])
     }
   }
 
@@ -1527,7 +1619,7 @@ Heatmap <- function(data,annotation,annotation_name="Anno",main="Heatmap",colors
   {
     if(!is.data.frame(annotation))
     {
-      annotation_col = data.frame(class=annotation)
+      annotation_col = base::data.frame(class=annotation)
       rownames(annotation_col) <- colnames(data)
       ann_colors = list(class = colors_annotation)
       colnames(annotation_col) <- annotation_name
@@ -1549,31 +1641,31 @@ Heatmap <- function(data,annotation,annotation_name="Anno",main="Heatmap",colors
     if(any(!is.na(color_breaks)))
     {
       color_breaks <- seq(from=color_breaks[1],to = color_breaks[2],length.out = length(colors_plot))
-      pheatmap(mat = data,color = colors_plot,breaks = color_breaks,annotation_col = annotation_col,annotation_colors=ann_colors,main=main,show_colnames = show_colnames,show_rownames = show_rownames,fontsize_row = fontsize_rows,cluster_rows = hclust_row,cluster_cols = hclust_col,border_color=NA,labels_row=row_labels)
+      pheatmap::pheatmap(mat = data,color = colors_plot,breaks = color_breaks,annotation_col = annotation_col,annotation_colors=ann_colors,main=main,show_colnames = show_colnames,show_rownames = show_rownames,fontsize_row = fontsize_rows,cluster_rows = hclust_row,cluster_cols = hclust_col,border_color=NA,labels_row=row_labels)
     }else
     {
       max <- max(abs(data),na.rm=T)
       color_breaks = seq(from=-max,to = max,length.out = length(colors_plot))
 
-      pheatmap(mat = data,color = colors_plot,annotation_col = annotation_col,breaks = color_breaks,annotation_colors=ann_colors,main=main,show_colnames = show_colnames,show_rownames = show_rownames,fontsize_row = fontsize_rows,cluster_rows = hclust_row,cluster_cols = hclust_col,border_color=NA,labels_row=row_labels)
+      pheatmap::pheatmap(mat = data,color = colors_plot,annotation_col = annotation_col,breaks = color_breaks,annotation_colors=ann_colors,main=main,show_colnames = show_colnames,show_rownames = show_rownames,fontsize_row = fontsize_rows,cluster_rows = hclust_row,cluster_cols = hclust_col,border_color=NA,labels_row=row_labels)
     }
   }
   if(interactive == T)
   {
-    library(plotly)
+    #library(plotly)
 
     if(any(!is.na(color_breaks)))
     {
       data[data < color_breaks[1]] <- color_breaks[1]
       data[data > color_breaks[2]] <- color_breaks[2]
 
-      heatmaply(as.matrix(data),col = colors_plot,col_side_colors = annotation,col_side_palette = colors_annotation,main=main,showticklabels = c(show_colnames,show_rownames),Rowv = hclust_row,Colv = hclust_col,labRow = row_labels)
+      heatmaply::heatmaply(as.matrix(data),col = colors_plot,col_side_colors = annotation,col_side_palette = colors_annotation,main=main,showticklabels = c(show_colnames,show_rownames),Rowv = hclust_row,Colv = hclust_col,labRow = row_labels)
     }else
     {
       max <- max(abs(data),na.rm=T)
       color_breaks <- c(-max,max)
 
-      heatmaply(as.matrix(data),col = colors_plot,limits = color_breaks,col_side_colors = annotation,col_side_palette = colors_annotation,main=main,showticklabels = c(show_colnames,show_rownames),Rowv = hclust_row,Colv = hclust_col,labRow = row_labels)
+      heatmaply::heatmaply(as.matrix(data),col = colors_plot,limits = color_breaks,col_side_colors = annotation,col_side_palette = colors_annotation,main=main,showticklabels = c(show_colnames,show_rownames),Rowv = hclust_row,Colv = hclust_col,labRow = row_labels)
     }
   }
 
@@ -1583,7 +1675,7 @@ Heatmap <- function(data,annotation,annotation_name="Anno",main="Heatmap",colors
 #' @param peptide_data Table of peptide quantifications with samples in columns and features in rows.
 #' @param peptide_data_quant_significance Optional: Ion accumulation significances with samples in columns and features in rows., By default not required and set to NULL.
 #' @param ids character vector of same length as rows in peptide_data indicating to which protein ID the corresponding peptide belongs to.
-#' @param annotation Annotation of grouping per sample
+#' @param anno Annotation of grouping per sample
 #' @param group1_name Name of group1 in annotation
 #' @param group2_name Name of group1 in annotation
 #' @param TopN_ratio Number of top abundant peptides on which at maximum protein ratios should be estimated. By default set to 5.
@@ -1591,41 +1683,42 @@ Heatmap <- function(data,annotation,annotation_name="Anno",main="Heatmap",colors
 #' @param test A character string indicating whether the ordinary t-test ("t"), modified t-test ("modt"), or reproducibility-optimized test statistic ("rots") is performed.
 #' @details Perform differential expression analysis using the function PECA_df() from the R-package PECA.
 #' @return Returns a matrix which rows correspond to the genes under analysis and columns indicate the corresponding abundance ratio, t-statistic, p-value and FDR adjusted p-value
+#' @export
 PECA_analysis <- function(peptide_data,peptide_data_quant_significance=NULL,ids,anno=NULL,group1_name,group2_name,TopN_ratio=5,pvalue_cutoff=NA,test=c("t","modt","rots"))
 {
-  library(PECA)
-  library(matrixStats)
+  #library(PECA)
+  #library(matrixStats)
   test <- test[1]
-  colnames(peptide_data) <- gsub("^X","",colnames(peptide_data))
+  colnames(peptide_data) <- base::gsub("^X","",colnames(peptide_data))
   #get names of samples in groups to be compared
   group_1 <- colnames(peptide_data)[which(anno == group1_name)]
   group_2 <- colnames(peptide_data)[which(anno == group2_name)]
   #max_pvalue per feature under investigation
   if(!is.na(pvalue_cutoff))
   {
-    max_pval <- rowMaxs(as.matrix(peptide_data_quant_significance[,append(group_1,group_2)]),na.rm=T)
+    max_pval <- matrixStats::rowMaxs(as.matrix(peptide_data_quant_significance[,append(group_1,group_2)]),na.rm=T)
     peptide_data <- peptide_data[which(max_pval < pvalue_cutoff),]
     ids <- ids[which(max_pval < pvalue_cutoff)]
   }
 
-  peptide_data <- data.frame(id=ids,2^peptide_data)
-  colnames(peptide_data) <- gsub("^X","",colnames(peptide_data))
+  peptide_data <- base::data.frame(id=ids,2^peptide_data)
+  colnames(peptide_data) <- base::gsub("^X","",colnames(peptide_data))
 
-  DE_results <- PECA_df(df = peptide_data,id=id,samplenames1 = group_1,samplenames2 = group_2,test = test,progress = F)
+  DE_results <- PECA::PECA_df(df = peptide_data,id="id",samplenames1 = group_1,samplenames2 = group_2,test = test,progress = F)
   colnames(DE_results)[c(1,5,6)] <- c("logFC","P.Value","adj.P.Val")
 
   #calculate ratio based on TopN abundant peptides per protein
   if(!is.na(TopN_ratio))
   {
-    peptide_data <- log2(peptide_data[,-1])
+    peptide_data <- base::log2(peptide_data[,-1])
     for(i in 1:nrow(DE_results))
     {
       temp_quants <- peptide_data[which(ids == rownames(DE_results)[i]),]
       if(nrow(temp_quants)>TopN_ratio)
       {
         temp_quants <- temp_quants[order(rowSums(temp_quants,na.rm = T),decreasing = T)[1:TopN_ratio],]
-        ratio <- median(rowMeans(temp_quants[,which(anno == group1_name)],na.rm=T)-rowMeans(temp_quants[,which(anno == group2_name)],na.rm=T),na.rm=T)
-        set(DE_results,as.integer(i),1L,ratio)
+        ratio <- stats::median(rowMeans(temp_quants[,which(anno == group1_name)],na.rm=T)-rowMeans(temp_quants[,which(anno == group2_name)],na.rm=T),na.rm=T)
+        data.table::set(DE_results,as.integer(i),1L,ratio)
       }
     }
   }
@@ -1642,23 +1735,23 @@ PECA_analysis <- function(peptide_data,peptide_data_quant_significance=NULL,ids,
 #' @param contrast String of format Group1_vs_Group2 specifying contrast of interest. Replace Group1 and Group2 by groups specified in assignments.
 #' @details Perform differential expression analysis using R-package LIMMA.
 #' @return Returns a matrix which rows correspond to the proteins under analysis and columns indicate the corresponding abundance ratio, t-statistic, p-value and FDR adjusted p-value.
+#' @export
 LIMMA_analysis <- function(data,assignments=NULL,batch=NULL,tech_reps=NULL,contrast=NULL)
 {
-  library(limma)
-  library(tibble)
-  library(matrixStats)
+  #library(limma)
+  #library(tibble)
+  #library(matrixStats)
 
   if(!is.null(assignments))
   {
     if(length(unique(assignments))>2 & is.null(contrast))
     {
-      print("Please specify a contrast.")
-      break
+      stop("Please specify a contrast.")
     }
     if(!is.null(contrast))
     {
       assignments <- as.character(assignments)
-      contrasts <- str_split(contrast,"_vs_",simplify = T)
+      contrasts <- stringr::str_split(contrast,"_vs_",simplify = T)
       assignments[assignments==contrasts[2]] <- "a" ###Group2 to which Group1 should be compared
       assignments[assignments==contrasts[1]] <- "b" ###Group1
       ###now change all other groups to c,d...if neccesarry
@@ -1667,12 +1760,12 @@ LIMMA_analysis <- function(data,assignments=NULL,batch=NULL,tech_reps=NULL,contr
         groups <- unique(assignments)[which(unique(assignments) %not in% c("a","b"))]
         for(g in groups)
         {
-          assignments[assignments==g] <- paste("others",which(groups==g),sep="_")
+          assignments[assignments==g] <- base::paste("others",which(groups==g),sep="_")
         }
       }
     }
 
-    assignments <- as.data.frame(assignments)
+    assignments <- base::as.data.frame(assignments)
     if(names(assignments) != "Group"){names(assignments) <- "Group"}
 
     data <- data[,order(assignments$Group)]
@@ -1682,21 +1775,21 @@ LIMMA_analysis <- function(data,assignments=NULL,batch=NULL,tech_reps=NULL,contr
     if(!is.null(batch) & length(unique(batch))>1)
     {
       assignments$batch <- batch
-      mm <- model.matrix(~factor(Group) + factor(batch), assignments)
+      mm <- stats::model.matrix(~factor(Group) + factor(batch), assignments)
     }else
     {
-      mm <- model.matrix(~factor(Group), assignments)
+      mm <- stats::model.matrix(~factor(Group), assignments)
     }
     if(is.null(tech_reps))
     {
-      fit <- lmFit( data, mm)
+      fit <- limma::lmFit( data, mm)
     }else
     {
-      dc <- duplicateCorrelation(data, design=mm,block=tech_reps)
-      fit <- lmFit( data, mm,block=tech_reps, correlation=dc$consensus)
+      dc <- limma::duplicateCorrelation(data, design=mm,block=tech_reps)
+      fit <- limma::lmFit( data, mm,block=tech_reps, correlation=dc$consensus)
     }
 
-    res <- topTable(eBayes(fit), coef = 2, number = Inf)#length(unique(assignments$Group))
+    res <- limma::topTable(limma::eBayes(fit), coef = 2, number = Inf)#length(unique(assignments$Group))
 
     if(is.null(contrast))
     {
@@ -1712,11 +1805,11 @@ LIMMA_analysis <- function(data,assignments=NULL,batch=NULL,tech_reps=NULL,contr
       sds <- NULL
       for(c in unique(assignments$Group))
       {
-        sds <- cbind(sds,rowSds(as.matrix(data[,which(assignments$Group == c)]),na.rm=T))
+        sds <- cbind(sds,matrixStats::rowSds(as.matrix(data[,which(assignments$Group == c)]),na.rm=T))
       }
       rownames(sds) <- rownames(data)
       sds <- sds[match(rownames(res),rownames(sds)),]
-      res$median_sd <- rowMedians(sds,na.rm=T)
+      res$median_sd <- matrixStats::rowMedians(sds,na.rm=T)
 
       ###Add number of valid data points per group
       n_data_points <- NULL
@@ -1724,8 +1817,8 @@ LIMMA_analysis <- function(data,assignments=NULL,batch=NULL,tech_reps=NULL,contr
       {
         n_data_points <- cbind(n_data_points,rowSums(!is.na(data[,which(assignments$Group == c)])))
       }
-      n_data_points <- as.data.frame(n_data_points)
-      colnames(n_data_points) <- paste("n_data_points_",unique(assignments$Group),sep="")
+      n_data_points <- base::as.data.frame(n_data_points)
+      colnames(n_data_points) <- base::paste("n_data_points_",unique(assignments$Group),sep="")
       rownames(n_data_points) <- rownames(data)
       n_data_points <- n_data_points[match(rownames(res),rownames(n_data_points)),]
 
@@ -1736,11 +1829,11 @@ LIMMA_analysis <- function(data,assignments=NULL,batch=NULL,tech_reps=NULL,contr
       sds <- NULL
       for(c in unique(assignments$Group)[1:2])
       {
-        sds <- cbind(sds,rowSds(as.matrix(data[,which(assignments$Group == c)]),na.rm=T))
+        sds <- cbind(sds,matrixStats::rowSds(as.matrix(data[,which(assignments$Group == c)]),na.rm=T))
       }
       rownames(sds) <- rownames(data)
       sds <- sds[match(rownames(res),rownames(sds)),]
-      res$median_sd <- rowMedians(sds,na.rm=T)
+      res$median_sd <- matrixStats::rowMedians(sds,na.rm=T)
 
       ###Add number of valid data points per group
       n_data_points <- NULL
@@ -1748,9 +1841,9 @@ LIMMA_analysis <- function(data,assignments=NULL,batch=NULL,tech_reps=NULL,contr
       {
         n_data_points <- cbind(n_data_points,rowSums(!is.na(data[,which(assignments$Group == c)])))
       }
-      n_data_points <- as.data.frame(n_data_points)
-      colnames(n_data_points)[1] <- paste("n_data_points_",contrasts[2],sep="")
-      colnames(n_data_points)[2] <- paste("n_data_points_",contrasts[1],sep="")
+      n_data_points <- base::as.data.frame(n_data_points)
+      colnames(n_data_points)[1] <- base::paste("n_data_points_",contrasts[2],sep="")
+      colnames(n_data_points)[2] <- base::paste("n_data_points_",contrasts[1],sep="")
 
       rownames(n_data_points) <- rownames(data)
       n_data_points <- n_data_points[match(rownames(res),rownames(n_data_points)),]
@@ -1762,19 +1855,19 @@ LIMMA_analysis <- function(data,assignments=NULL,batch=NULL,tech_reps=NULL,contr
   {
     if(!is.null(batch))
     {
-      assignments <- data.frame(batch=batch)
-      mm <- model.matrix(~0 + factor(batch), assignments)
+      assignments <- base::data.frame(batch=batch)
+      mm <- stats::model.matrix(~0 + factor(batch), assignments)
 
-      fit <- lmFit( data, mm)
+      fit <- limma::lmFit( data, mm)
 
     }else
     {
-      fit <- lmFit(data)
+      fit <- limma::lmFit(data)
     }
 
-    res <- topTable(eBayes(fit), coef = 1, number = Inf)
+    res <- limma::topTable(limma::eBayes(fit), coef = 1, number = Inf)
     ###add median standard deviation column per gene and condition
-    res$median_sd <- rowSds(as.matrix(data[match(rownames(res),rownames(data)),]),na.rm=T)
+    res$median_sd <- matrixStats::rowSds(as.matrix(data[match(rownames(res),rownames(data)),]),na.rm=T)
 
     ###add number of data points
     res$n_data_points <- rowSums(!is.na(data))[match(rownames(res),rownames(data))]
