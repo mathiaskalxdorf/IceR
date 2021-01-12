@@ -46,11 +46,11 @@ Imports:
     tidyr,
     rChoiceDialogs,
     tcltk,
-    snow,
-    vsn
+    snow
 Suggests:
     cleaver,
     PECA,
     rowr,
-    limma
+    limma,
+    vsn
 RoxygenNote: 7.1.1
