@@ -26,7 +26,8 @@ run_msconvert_raw_mzXML <- function(path_to_raw=NULL)
 
   ###check which raw files still have to be converted
   mzXMLs_available <- list.files(base::paste(path_to_raw,"\\mzXML",sep=""))
-
+  print(path_to_raw)
+  print(base::paste(path_to_raw,"\\mzXML",sep=""))
   print(mzXMLs_available)
 
   files_to_be_converted <- raw_files[which(base::gsub("\\.raw","",raw_files) %not in% base::gsub("\\.mzXML","",mzXMLs_available))]
