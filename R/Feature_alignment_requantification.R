@@ -21,25 +21,27 @@ run_msconvert_raw_mzXML <- function(path_to_raw=NULL)
 
   if(is.null(path_to_raw))path_to_raw <- rChoiceDialogs::rchoose.dir(caption = "Select folder containing raw files")
 
-  ###get home directory
-  home_folder <- Sys.getenv("HOME")
-  home_folder <- base::gsub("Documents","AppData/Local/Apps/",home_folder)
-
-  ###find MSConvert folder
-  folders <- list.dirs(path = home_folder, full.names = TRUE, recursive = F)
-  folders <- folders[which(grepl("ProteoWizard",folders))]
-  folders <- folders[length(folders)]
-
   raw_files <- list.files(path_to_raw)
   raw_files <- raw_files[which(grepl("\\.raw",raw_files))]
 
   ###check which raw files still have to be converted
   mzXMLs_available <- list.files(base::paste(path_to_raw,"\\mzXML",sep=""))
 
+  print(mzXMLs_available)
+
   files_to_be_converted <- raw_files[which(base::gsub("\\.raw","",raw_files) %not in% base::gsub("\\.mzXML","",mzXMLs_available))]
 
   if(length(files_to_be_converted)>0)
   {
+    ###get home directory
+    home_folder <- Sys.getenv("HOME")
+    home_folder <- base::gsub("Documents","AppData/Local/Apps/",home_folder)
+
+    ###find MSConvert folder
+    folders <- list.dirs(path = home_folder, full.names = TRUE, recursive = F)
+    folders <- folders[which(grepl("ProteoWizard",folders))]
+    folders <- folders[length(folders)]
+
     if(file.exists(base::paste(folders,"\\msconvert.exe",sep="")))
     {
       path_to_msconvert <- base::paste(folders,"\\msconvert.exe",sep="")
