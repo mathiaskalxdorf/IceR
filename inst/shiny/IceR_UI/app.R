@@ -745,7 +745,12 @@ server <- function(input, output,session)
   observeEvent(input$load_settings, {
 
     selected_parameters <- vector("character",0)
-    Filters_temp <- rbind(Filters,c("Excel files (*.xlsx)","*.xlsx"))
+
+    Filters_temp <- matrix(ncol=2,nrow=2)
+    Filters_temp[1,] <- c("All files (*.*)","*.*")
+    Filters_temp[2,] <- c("Excel files (*.xlsx)","*.xlsx")
+    rownames(Filters_temp) <- c("All","xlsx")
+
     rownames(Filters_temp)[nrow(Filters_temp)] <- "xlsx"
     selected_parameters <- rchoose.files(caption = "Select IceR parameters file",multi = F,filters = Filters_temp[c("All","xlsx"),],default="~")
     if(length(selected_parameters)>0)
