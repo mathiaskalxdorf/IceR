@@ -213,18 +213,70 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
   {
     print("Select Parameters.xlsx")
     parameters <- openxlsx::read.xlsx(base::file.choose(),1)
-    path_to_requant_folder <- base::paste(parameters$Setting[3],"/",sep="")
-    file_name_extension <- base::paste("_",parameters$Setting[4],sep="")
-    path_to_MaxQ <- base::paste(parameters$Setting[2],"/",sep="")
-    MaxQ_data <- utils::read.table(base::paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
-    MaxQ_data$Organism <- base::substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
-    MaxQ_data$ID <- stringr::str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+
+    #check if files can be found in the original location
+    MaxQ_file <- file.exists(paste0(parameters$Setting[2],"/proteinGroups.txt"))
+    Requant_file <- file.exists(paste0(parameters$Setting[3],"/Features_",parameters$Setting[4],".tab"))
+    if(MaxQ_file == T & Requant_file == T)
+    {
+      path_to_requant_folder <- base::paste(parameters$Setting[3],"/",sep="")
+      file_name_extension <- base::paste("_",parameters$Setting[4],sep="")
+      path_to_MaxQ <- base::paste(parameters$Setting[2],"/",sep="")
+      MaxQ_data <- utils::read.table(base::paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+      MaxQ_data$Organism <- base::substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
+      MaxQ_data$ID <- stringr::str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+    }else #a file could not be found so ask for paths individually
+    {
+      print("Paths in Parameter.xlsx seem to be no longer correct. Please supply paths manually.")
+      print("Select Features_x.tab file")
+      path_to_requant <- base::file.choose()
+      temp <- unlist(gregexpr("\\\\",path_to_requant))
+      path_to_requant_folder <- base::substr(path_to_requant,1,temp[length(temp)])
+      file_name_extension <- base::substr(path_to_requant,temp[length(temp)]+1,200)
+      file_name_extension <- base::gsub("Features_|\\.tab","",file_name_extension)
+      file_name_extension <- base::paste0("_",file_name_extension)
+
+      print("Select a file in the corresponding MaxQuant output folder")
+      path_to_MaxQ <- base::file.choose()
+      temp <- unlist(gregexpr("\\\\",path_to_MaxQ))
+      path_to_MaxQ <- base::substr(path_to_MaxQ,1,temp[length(temp)])
+      MaxQ_data <- utils::read.table(base::paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+      MaxQ_data$Organism <- base::substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
+      MaxQ_data$ID <- stringr::str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+    }
   }else if(!is.na(path_to_parameter_file))
   {
     parameters <- openxlsx::read.xlsx(path_to_parameter_file,1)
-    path_to_requant_folder <- base::paste(parameters$Setting[3],"/",sep="")
-    file_name_extension <- base::paste("_",parameters$Setting[4],sep="")
-    path_to_MaxQ <- base::paste(parameters$Setting[2],"/",sep="")
+    #check if files can be found in the original location
+    MaxQ_file <- file.exists(paste0(parameters$Setting[2],"/proteinGroups.txt"))
+    Requant_file <- file.exists(paste0(parameters$Setting[3],"/Features_",parameters$Setting[4],".tab"))
+    if(MaxQ_file == T & Requant_file == T)
+    {
+      path_to_requant_folder <- base::paste(parameters$Setting[3],"/",sep="")
+      file_name_extension <- base::paste("_",parameters$Setting[4],sep="")
+      path_to_MaxQ <- base::paste(parameters$Setting[2],"/",sep="")
+      MaxQ_data <- utils::read.table(base::paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+      MaxQ_data$Organism <- base::substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
+      MaxQ_data$ID <- stringr::str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+    }else #a file could not be found so ask for paths individually
+    {
+      print("Paths in Parameter.xlsx seem to be no longer correct. Please supply paths manually.")
+      print("Select Features_x.tab file")
+      path_to_requant <- base::file.choose()
+      temp <- unlist(gregexpr("\\\\",path_to_requant))
+      path_to_requant_folder <- base::substr(path_to_requant,1,temp[length(temp)])
+      file_name_extension <- base::substr(path_to_requant,temp[length(temp)]+1,200)
+      file_name_extension <- base::gsub("Features_|\\.tab","",file_name_extension)
+      file_name_extension <- base::paste0("_",file_name_extension)
+
+      print("Select a file in the corresponding MaxQuant output folder")
+      path_to_MaxQ <- base::file.choose()
+      temp <- unlist(gregexpr("\\\\",path_to_MaxQ))
+      path_to_MaxQ <- base::substr(path_to_MaxQ,1,temp[length(temp)])
+      MaxQ_data <- utils::read.table(base::paste(path_to_MaxQ,"proteinGroups.txt",sep=""),sep="\t",header=T)
+      MaxQ_data$Organism <- base::substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
+      MaxQ_data$ID <- stringr::str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
+    }
   }else
   {
     if(is.na(path_to_requant_folder) | is.na(file_name_extension))
