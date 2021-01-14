@@ -79,11 +79,11 @@ When IceR finished, some quality control plots for the alignment and quantificat
 
 Subsequently, we can investigate results in more detail and compare results to MaxQuant outputs.
 
-We need two additional R-packages to be installed for the following steps.
+We need 4 additional R-packages to be installed for the following steps.
 ```{r}
-install.packages("BiocManager")
-BiocManager::install("PECA")
 install.packages("http://cran.r-project.org/src/contrib/Archive/rowr/rowr_1.1.3.tar.gz", repos=NULL, type="source")
+install.packages("BiocManager")
+BiocManager::install(c("PECA","limma","vsn"))
 ```
 Now we load IceR library.
 ```{r}
