@@ -8,14 +8,17 @@
 Label-free proteomics enables the unbiased quantification of thousands of proteins across large sample cohorts. Commonly used mass spectrometry-based proteomic workflows rely on data dependent acquisition (DDA). However, its stochastic selection of peptide features for fragmentation-based identification inevitably results in high rates of missing values, which prohibits the integration of larger cohorts as the number of recurrently detected peptides is a limiting factor. Peptide identity propagation (PIP) can mitigate this challenge, allowing to transfer sequencing information between samples. However, despite the promise of these approaches, current methods remain limited either in sensitivity or reliability and there is a lack of robust and widely applicable software. To address this, we here present IceR, an efficient and user-friendly quantification workflow introducing a hybrid PIP approach with superior quantification precision, accuracy, reliability and data completeness. IceR is available as an easy to-use R-package incorporating a graphical user interface and comprehensive quality control measures.
 
 ### Installation
-The following installations are required:
+#### Win10
+The following installations are required for Windows 10:
 
  - [R](https://cran.r-project.org/bin/windows/base/) (Version 3.63 or above)
- - [Rtools](https://cran.r-project.org/bin/windows/Rtools/history.html) (select required version)
+ - Optional: [Rtools](https://cran.r-project.org/bin/windows/Rtools/history.html) (select required version)
  - Optional: [ProteoWizard](http://proteowizard.sourceforge.net/download.html)
  - Optional: [RStudio](https://rstudio.com/products/rstudio/download/)
  
 During installation, please keep default settings and follow respective instructions.
+
+If an error occurs during installation of the package rJava, it could indicate that Java is not properly installed. Please follow the installation instructions for Java and rJava (installing suitable JDK version might solve the issue) 
 
 Next, we install the IceR package from GitHub
 ```r
@@ -27,10 +30,51 @@ If everything wents fine, IceR should be installed and can be used (e.g. with th
 library(IceR)
 runIceR()
 ```
-### Prerequisites
-IceR was yet only tested on Windows 10 but should work on other OS as well. 
 
-The current version of IceR requires raw MS files (from Thermo Mass Spectrometers or from Bruker TIMS-ToF pro) to be preprocessed with MaxQuant (tested for Versions 1.5.1.2, 1.6.12 and 1.6.14, versions in between should work as well). Important note: Fasta file should be parsed correctly. In this case the column "Gene names" can be found in the proteinGroups.txt. Furthermore, raw Orbitrap files are required in the mzXML format and raw TIMS-ToF data has to be converted into a readable format. If msconvert from ProteoWizard is installed, IceR triggers conversion automatically. Otherwise, the user has to place the converted files in the folder "mzXML" in case of orbitrap data within the folder containing the raw files. Conversion of Bruker TIMS-ToF pro data is currently only possible if msConvert is installed. 
+#### Ubuntu
+Sorry for potentially unclear and/or amateurish installation instructions for Ubuntu
+
+The following steps have to be done using the terminal:
+
+```t
+sudo apt-get update
+sudo apt-get install r-base
+sudo apt install build-essential libcurl4-gnutls-dev libxml2-dev libssl-dev libgit2-dev libv8-dev
+sudo apt-get install r-base-dev default-jdk
+```
+
+Open R in administrator mode:
+
+```t
+sudo -i R
+```
+
+In the R console trigger installation of R packages:
+
+```r
+install.packages('devtools')
+devtools::install_github("mathiaskalxdorf/IceR")
+```
+
+If successful, close and restart R (not in administrator mode):
+
+```t
+R
+```
+
+... and try running IceR:
+
+```r
+library(IceR)
+runIceR()
+```
+
+ProteoWizard and its related msCovert is currently (to my knowledge) not available for Ubuntu. Hence, processing of TIMS-ToF pro data is currently not supported on Ubuntu. In case of Thermo MS data, the conversion into required mzXML files using msConvert can not be triggered automatically but have to be manually converted. Resulting mzXML files have to be manually located in the folder "mzXML" within the same folder which contains the raw files.
+
+### Prerequisites
+IceR was so far tested on Windows 10 and Ubuntu 20.04.1. 
+
+The current version of IceR requires raw MS files (from Thermo Mass Spectrometers or from Bruker TIMS-ToF pro) to be preprocessed with MaxQuant (tested for Versions 1.5.1.2, 1.6.12 and 1.6.14, versions in between should work as well). Important note: Fasta file should be parsed correctly. In this case the column "Gene names" can be found in the proteinGroups.txt. Furthermore, raw Orbitrap files are required in the mzXML format and raw TIMS-ToF data has to be converted into a readable format. If msconvert from ProteoWizard is installed (Windows-only), IceR triggers conversion automatically. Otherwise, the user has to place the converted files in the folder "mzXML" in case of orbitrap data within the folder containing the raw files. Conversion of Bruker TIMS-ToF pro data is currently only possible if msConvert is installed. 
 
 Generally, the more ressources are available the faster the data analysis can be performed. Still, IceR can run reasonably well even on a normal PC/Laptop. However, in case of TIMS-ToF data a potent machine will be required due to the huge file sizes. Here it is recommended to at least allocate 128 gb of RAM to enable at maximum 3 samples to be processed in parallel. Furthermore, TIMS-ToF raw data currently has to be converted (automatically triggered by IceR, requires msConvert to be installed) into a readable format which requires several hours per sample and at least 50 gb of space on the machines home drive. A future version of IceR will implement a faster conversion method.
 
