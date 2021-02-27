@@ -604,6 +604,8 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
   rownames(dat_prot) <- names_available
   colnames(dat_prot) <- orgs
 
+  dat_prot <- dat_prot[,which(!is.na(colnames(dat_prot)) & colnames(dat_prot) != "")]
+
   if(length(colors) > length(names_available))colors <- colors[1:length(names_available)]
 
   ###peptide numbers
@@ -628,6 +630,9 @@ compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","choc
   dat_peps <- base::as.data.frame(t(dat_peps))
   rownames(dat_peps) <- names_available
   colnames(dat_peps) <- orgs
+
+  dat_peps <- dat_peps[,which(!is.na(colnames(dat_peps)) & colnames(dat_peps) != "")]
+
 
   ###missing values
   missing_values_prot <- NULL
@@ -1185,11 +1190,11 @@ normalize_data <- function(data,method=c("median","density","vsn"),norm_to=NULL,
     }
 
     if(is.null(norm_to))norm_to <- mean(maxima,na.rm=T)
-    norm_factors <- norm_to/maxima
+    norm_factors <- maxima-norm_to
     data_norm <- data
     for(c in 1:ncol(data))
     {
-      data_norm[,c] <- data_norm[,c]*norm_factors[c]
+      data_norm[,c] <- data_norm[,c]-norm_factors[c]
     }
 
   }

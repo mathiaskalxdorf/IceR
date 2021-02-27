@@ -38,7 +38,7 @@ run_panel <- fluidPage(
 
     column(3,
            h3("Run"),
-           actionButton("run_all", "Total process",width = 170),
+           actionButton("run_all", "Run",width = 170),
            br(),
            radioButtons("massspecmode",
                               h3("MassSpec-Mode"),
@@ -446,6 +446,12 @@ run_all_processes <- function(settings_list)
       sample_list <- sort(rep(sample_list,3))
       channels <- c("_Channel_light","_Channel_medium","_Channel_heavy")
       sample_list <- paste(sample_list,channels,sep="")
+    }
+
+    #check that more than 1 sample is specified
+    if(length(sample_list) < 2)
+    {
+      stop("Less than 2 sample raw files are available in the Raw files folder.")
     }
 
     align_features(path_to_MaxQ_output = path_to_MaxQ_output,

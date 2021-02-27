@@ -24,6 +24,9 @@ run_msconvert_raw_mzXML <- function(path_to_raw=NULL)
   raw_files <- list.files(path_to_raw)
   raw_files <- raw_files[which(grepl("\\.raw",raw_files))]
 
+  print("The following raw files were found in the specified folder: ")
+  cat(raw_files, sep = '\n')
+
   ###check which raw files still have to be converted
   mzXMLs_available <- list.files(base::paste(path_to_raw,"/mzXML",sep=""))
 
@@ -544,7 +547,9 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
   if(file.exists(base::paste("Temporary_files/Features_aligned_merged",output_file_names_add,".txt",sep="")))
   {
-    print("Alignment already done")
+    options(warn=1)
+    warning(base::paste("Features_aligned_merged",output_file_names_add,".txt is already available in the Temporary_files folder\n IceR will use this one for subsequent steps. If this is not intended, please remove Features_aligned_merged",output_file_names_add,".txt in Temporary_files folder or the complete folder.",sep=""))
+    options(warn=-1)
   }else
   {
     if(file.exists("Temporary_files/allPeptides.RData"))
@@ -555,6 +560,28 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       if(is.null(sample_list))
       {
         sample_list <- sort(unique(allpeptides$Raw.file))
+      }else
+      {
+        #check if all Raw.files are in sample_list and that all samples in sample_list are in Raw.file
+        all_samples_in_MaxQ <- sort(unique(allpeptides$Raw.file))
+
+        #Any samples specified for IceR but not available in MaxQ data?
+        if(any(sample_list %not in% all_samples_in_MaxQ))
+        {
+          missing <- which(sample_list %not in% all_samples_in_MaxQ)
+          options(warn=1)
+          warning(paste0(paste(sample_list[missing],collapse = ",")," is/are specified to be requantified by IceR but missing in MaxQuant results. This/these samples will be skipt by IceR."))
+          options(warn=-1)
+        }
+
+        #Any samples available in MaxQ but not specified for IceR?
+        if(any(all_samples_in_MaxQ %not in% sample_list))
+        {
+          missing <- which(all_samples_in_MaxQ %not in% sample_list)
+          options(warn=1)
+          warning(paste0(paste(all_samples_in_MaxQ[missing],collapse = ",")," is/are available in MaxQuant results but not specified to be requantified by IceR. This/these samples will be skipt by IceR."))
+          options(warn=-1)
+        }
       }
 
     }else
@@ -607,6 +634,30 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       ###free some memory
       rm(allpeptides_save)
       gc()
+
+      if(!is.null(sample_list))
+      {
+        #check if all Raw.files are in sample_list and that all samples in sample_list are in Raw.file
+        all_samples_in_MaxQ <- sort(unique(allpeptides$Raw.file))
+
+        #Any samples specified for IceR but not available in MaxQ data?
+        if(any(sample_list %not in% all_samples_in_MaxQ))
+        {
+          missing <- which(sample_list %not in% all_samples_in_MaxQ)
+          options(warn=1)
+          warning(paste0(paste(sample_list[missing],collapse = ",")," is/are specified to be requantified by IceR but missing in MaxQuant results. This/these samples will be skipt by IceR."))
+          options(warn=-1)
+        }
+
+        #Any samples available in MaxQ but not specified for IceR?
+        if(any(all_samples_in_MaxQ %not in% sample_list))
+        {
+          missing <- which(all_samples_in_MaxQ %not in% sample_list)
+          options(warn=1)
+          warning(paste0(paste(all_samples_in_MaxQ[missing],collapse = ",")," is/are available in MaxQuant results but not specified to be requantified by IceR. This/these samples will be skipt by IceR."))
+          options(warn=-1)
+        }
+      }
 
       ##unify column names
       #RT
@@ -5526,6 +5577,16 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   dir.create(base::paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep=""),showWarnings = F)
   available <- list.files(base::paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep=""))
   available <- base::gsub("_feature_quant.RData","",available)
+
+  # return a warning if for some samples decoy features were already extracted
+  if(length(which(samples %in% available))>0)
+  {
+    indx <- which(samples %in% available)
+    options(warn=1)
+    warning(paste0("Decoy intensities were already extracted for ",paste(samples[indx],collapse=",")," and will be used for subsequent IceR steps. If this is unintended because raw files, MaxQuant results, or IceR parameters were changed, please stop IceR now, delete the folder ",paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep="")," and restart IceR. Consider removing ",paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep="")," as well. If any of the previously mentioned changes were made, please consider removing the complete Temporary_files folder to enable a fresh run of IceR or at least Quantification_raw_results.RData."))
+    options(warn=-1)
+  }
+
   if(length(which(samples %not in% available))>0)
   {
     selected_decoys <- which(grepl("_d",features$Feature_name))
@@ -5743,6 +5804,16 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   available <- available[which(grepl("feature_quant.RData",available))]
   available <- base::gsub("_feature_quant.RData","",available)
   peak_min_ion_count <- grDevices::boxplot.stats(as.numeric(as.matrix(decoy_ioncount)))$stats[4]
+
+  # return a warning if for some samples decoy features were already extracted
+  if(length(which(samples %in% available))>0)
+  {
+    indx <- which(samples %in% available)
+    options(warn=1)
+    warning(paste0("Feature intensities were already extracted for ",paste(samples[indx],collapse=",")," and will be used for subsequent IceR steps. If this is unintended because raw files, MaxQuant results, or IceR parameters were changed, please stop IceR now, delete the folder ",paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep="")," and restart IceR. If any of the previously mentioned changes were made, please consider removing the complete Temporary_files folder to enable a fresh run of IceR or at least Quantification_raw_results.RData."))
+    options(warn=-1)
+  }
+
   if(length(which(samples %not in% available))>0)
   {
     samples <- samples[which(samples %not in% available)]
@@ -5911,6 +5982,10 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   #if peak detection was performed, then check if peak selection was already done. If yes, load stored data, if not, perform peak selection
   if(file.exists(base::paste(path_to_features,"/Temporary_files/Quantification_raw_results.RData",sep="")))
   {
+    options(warn=1)
+    warning("Peak selection was already performed and stored results will be used. If this is unintended because Raw files, MaxQuant results, or IceR parameters were changed, please remove Quantification_raw_results.RData in Temporary_files folder or the complete Temporary_files folder to enable a fresh run of IceR.")
+    options(warn=-1)
+
     load(base::paste(path_to_features,"/Temporary_files/Quantification_raw_results.RData",sep=""))
     crap <- gc(F)
   }else
