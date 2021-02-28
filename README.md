@@ -133,9 +133,8 @@ When IceR finished, some quality control plots for the alignment and quantificat
 
 Subsequently, we can investigate results in more detail and compare results to MaxQuant outputs.
 
-We need 4 additional R-packages to be installed for the following steps.
+We need 3 additional R-packages to be installed for the following steps.
 ```{r}
-install.packages("http://cran.r-project.org/src/contrib/Archive/rowr/rowr_1.1.3.tar.gz", repos=NULL, type="source")
 install.packages("BiocManager")
 BiocManager::install(c("PECA","limma","vsn"))
 ```
@@ -219,7 +218,7 @@ MaxQ_FP <- length(which(abs(DE_MaxQ$logFC)>=1 & DE_MaxQ$adj.P.Val < 0.05 & rowna
 IceR_TP <- length(which(DE_IceR$logFC>=1 & DE_IceR$adj.P.Val < 0.05 & rownames(DE_IceR) != toupper(rownames(DE_IceR))))
 IceR_FP <- length(which(abs(DE_IceR$logFC)>=1 & DE_IceR$adj.P.Val < 0.05 & rownames(DE_IceR) == toupper(rownames(DE_IceR))))
 plot_Data <- data.frame(MaxQ=c(MaxQ_TP,MaxQ_FP),IceR=c(IceR_TP,IceR_FP))
-Barplotsstacked(plot_Data,AvgLine = F,col=c("lightblue","grey"),margins = c(4,4,4,12),Legends = c("true positives","false positives"),Legendpos = "top",inset = c(0,0),main="Comparison of DE results",ylab="Count")
+p <- Barplotsstacked(plot_Data,AvgLine = F,col=c("lightblue","grey"),margins = c(4,4,4,12),Legends = c("true positives","false positives"),Legendpos = "top",inset = c(0,0),main="Comparison of DE results",ylab="Count")
 ```
 
 <p align="center"> 

@@ -578,7 +578,6 @@ determine_general_numbers <- function(data_list)
 #' @export
 compare_general_numbers <- function(list_of_data_lists,colors=c("darkgrey","chocolate3"),Legendpos = "top",margins=c(12,4,4,9),inset=c(-0.435,0))
 {
-  #library(rowr)
   ###protein numbers
   dat_prot <- NULL
   names_available=NULL
