@@ -1,2 +1,4 @@
 language: R
 cache: packages
+before_install:
+  - sudo $(which R) CMD javareconf
