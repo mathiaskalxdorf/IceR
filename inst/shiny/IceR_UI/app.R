@@ -588,7 +588,14 @@ server <- function(input, output,session)
   # })
   observeEvent(input$MaxQ_output_folder, {
 
-    selected_folder <- rchoose.dir(caption = "Choose MaxQ output folder",default = "~")
+    if(Sys.info()["sysname"] != "Darwin")
+    {
+      selected_folder <- rchoose.dir(caption = "Choose MaxQ output folder",default = "~")
+    }else
+    {
+      selected_folder <- tcltk::tk_choose.dir(caption = "Choose MaxQ output folder",default = "~")
+    }
+
     if(length(selected_folder)>0)
     {
       if(!is.na(selected_folder))
@@ -629,7 +636,13 @@ server <- function(input, output,session)
 
   observeEvent(input$Raw_folder, {
 
-    selected_folder <- rchoose.dir(caption = "Choose folder containing raw files",default = "~")
+    if(Sys.info()["sysname"] != "Darwin")
+    {
+      selected_folder <- rchoose.dir(caption = "Choose folder containing raw files",default = "~")
+    }else
+    {
+      selected_folder <- tcltk::tk_choose.dir(caption = "Choose folder containing raw files",default = "~")
+    }
     if(length(selected_folder)>0)
     {
       if(!is.na(selected_folder))
@@ -669,7 +682,13 @@ server <- function(input, output,session)
 
   observeEvent(input$IceR_output, {
 
-    selected_folder <- rchoose.dir(caption = "Choose final output folder",default = "~")
+    if(Sys.info()["sysname"] != "Darwin")
+    {
+      selected_folder <- rchoose.dir(caption = "Choose final output folder",default = "~")
+    }else
+    {
+      selected_folder <- tcltk::tk_choose.dir(caption = "Choose final output folder",default = "~")
+    }
     if(length(selected_folder)>0)
     {
       if(!is.na(selected_folder))
@@ -759,6 +778,16 @@ server <- function(input, output,session)
 
     rownames(Filters_temp)[nrow(Filters_temp)] <- "xlsx"
     selected_parameters <- rchoose.files(caption = "Select IceR parameters file",multi = F,filters = Filters_temp[c("All","xlsx"),],default="~")
+
+    if(Sys.info()["sysname"] != "Darwin")
+    {
+      selected_parameters <- rChoiceDialogs::rchoose.files(caption = "Select IceR parameters file",multi = F,filters = Filters_temp[c("All","xlsx"),],default="~")
+    }else
+    {
+      selected_parameters <- tcltk::tk_choose.files(caption = "Select IceR parameters file",multi = F,filters = Filters_temp[c("All","xlsx"),],default="~")
+    }
+
+
     if(length(selected_parameters)>0)
     {
       temp_settings <- read.xlsx(selected_parameters)
