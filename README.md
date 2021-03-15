@@ -18,7 +18,7 @@ The following installations are required for Windows 10:
  
 During installation, please keep default settings and follow respective instructions.
 
-If an error occurs during installation of the package rJava, it could indicate that Java is not properly installed. Please follow the installation instructions for Java and rJava (installing suitable JDK version might solve the issue) 
+If an error occurs during installation of the package rJava, it could indicate that Java is not properly installed. Please follow the installation instructions for Java and rJava (installing suitable JDK version should solve the issue) 
 
 Next, we install the IceR package from GitHub
 ```r
@@ -71,8 +71,40 @@ runIceR()
 
 ProteoWizard and its related msCovert is currently (to my knowledge) not available for Ubuntu. Hence, processing of TIMS-ToF pro data is currently not supported on Ubuntu. In case of Thermo MS data, the conversion into required mzXML files using msConvert can not be triggered automatically but have to be manually converted. Resulting mzXML files have to be manually located in the folder "mzXML" within the same folder which contains the raw files.
 
+#### macOS
+Sorry for potentially unclear and/or amateurish installation instructions for Ubuntu.
+
+The following installations are required for macOS:
+
+ - [R](https://cran.r-project.org/bin/macosx/) (Version 4.0.4 or above)
+ - [RStudio](https://rstudio.com/products/rstudio/download/)
+ 
+In case of macOS (tested for macOS Big Sur 11.1.0) it is important to install and use RStudio as currently a bug in tctlk package prevents IceR from running properly when started directly from R console (tested for R 4.0.4).
+
+Furthermore, please check that a latest version of [Java](https://www.java.com/de/download/) is installed.
+
+In case of macOS, we additionally have to install [XQuartz](https://www.xquartz.org/)
+
+Start RStudio in administrator/superuser mode
+
+```r
+install.packages('devtools')
+devtools::install_github("mathiaskalxdorf/IceR")
+```
+
+If an error occurs while installing package utf8, please follow the displayed instructions.
+
+If installation worked successfully, try running IceR:
+
+```r
+library(IceR)
+runIceR()
+```
+
+ProteoWizard and its related msCovert is currently (to my knowledge) not available for macOS. Hence, processing of TIMS-ToF pro data is currently not supported on macOS. In case of Thermo MS data, the conversion into required mzXML files using msConvert can not be triggered automatically but have to be manually converted. Resulting mzXML files have to be manually located in the folder "mzXML" within the same folder which contains the raw files.
+
 ### Prerequisites
-IceR was so far tested on Windows 10 and Ubuntu 20.04.1.
+IceR was so far tested on Windows 10, Ubuntu 20.04.1, and macOS 11.1.0.
 
 The current version of IceR requires raw MS files (from Thermo Mass Spectrometers or from Bruker TIMS-ToF pro) to be preprocessed with MaxQuant (tested for Versions 1.5.1.2, 1.6.12 and 1.6.14, versions in between should work as well). 
 
@@ -87,7 +119,7 @@ Raw Orbitrap files are required in the mzXML format and raw TIMS-ToF data has to
 
 Generally, the more ressources are available the faster the data analysis can be performed. Still, IceR can run reasonably well even on a normal PC/Laptop. However, in case of TIMS-ToF data a potent machine will be required due to the huge file sizes. Here it is recommended to at least allocate 128 gb of RAM to enable at maximum 3 samples to be processed in parallel. Furthermore, TIMS-ToF raw data currently has to be converted (automatically triggered by IceR, requires msConvert to be installed) into a readable format which requires several hours per sample and at least 50 gb of space on the machines home drive. A future version of IceR will implement a faster conversion method.
 
-### Example
+### Example (Windows 10)
 For this example, we will require [ProteoWizard](http://proteowizard.sourceforge.net/download.html) to be installed as raw files will have to be converted.
 
 The example data set is stored [here](https://drive.google.com/drive/folders/1te8awhyliY4vKCCxjUdwJNJD_YlYjHJf?usp=sharing).

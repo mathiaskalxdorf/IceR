@@ -777,7 +777,6 @@ server <- function(input, output,session)
     rownames(Filters_temp) <- c("All","xlsx")
 
     rownames(Filters_temp)[nrow(Filters_temp)] <- "xlsx"
-    selected_parameters <- rchoose.files(caption = "Select IceR parameters file",multi = F,filters = Filters_temp[c("All","xlsx"),],default="~")
 
     if(Sys.info()["sysname"] != "Darwin")
     {
