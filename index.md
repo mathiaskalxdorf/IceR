@@ -71,7 +71,7 @@ runIceR()
 ProteoWizard and its related msCovert is currently (to my knowledge) not available for Ubuntu. Hence, processing of TIMS-ToF pro data is currently not supported on Ubuntu. In case of Thermo MS data, the conversion into required mzXML files using msConvert can not be triggered automatically but have to be manually converted. Resulting mzXML files have to be manually located in the folder "mzXML" within the same folder which contains the raw files.
 
 #### macOS
-Sorry for potentially unclear and/or amateurish installation instructions for Ubuntu.
+Sorry for potentially unclear and/or amateurish installation instructions for macOS.
 
 The following installations are required for macOS:
 
@@ -84,7 +84,7 @@ Furthermore, please check that a latest version of [Java](https://www.java.com/d
 
 In case of macOS, we additionally have to install [XQuartz](https://www.xquartz.org/)
 
-Start RStudio in administrator/superuser mode
+Start RStudio in administrator/superuser mode and install IceR from GitHub using devtools:
 
 ```r
 install.packages('devtools')
