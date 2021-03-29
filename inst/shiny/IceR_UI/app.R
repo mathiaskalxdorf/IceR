@@ -43,8 +43,7 @@ run_panel <- fluidPage(
            radioButtons("massspecmode",
                               h3("MassSpec-Mode"),
                               choices = list("Orbitrap" = 1,
-                                             "TIMS-ToF Pro (use TIMS)" = 2,
-                                             "TIMS-ToF Pro (don´t use TIMS)" = 3),
+                                             "timsTOF" = 2),
                               selected = 1),
 
            #actionButton("run_feature_alignment", "Only feature alignment",width = 170),
@@ -835,11 +834,9 @@ server <- function(input, output,session)
       #                                                                    "MaxLFQ quantification" = 8),selected = selection)
 
       #massspec mode
-      selection_mode <- ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == T,2,
-                               ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == F,3,
-                               1))
+      selection_mode <- ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == T,2,1)
 
-      updateRadioButtons(session,inputId = "massspecmode",choices = list("Orbitrap" = 1,"TIMS-ToF Pro (use TIMS)" = 2,"TIMS-ToF Pro (don´t use TIMS)" = 3),selected = selection_mode)
+      updateRadioButtons(session,inputId = "massspecmode",choices = list("Orbitrap" = 1,"timsTOF" = 2),selected = selection_mode)
 
       #multiplicity
       selection_multiplicity <- ifelse(temp_settings$Setting[27] == "1",1,
