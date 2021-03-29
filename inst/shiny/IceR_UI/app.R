@@ -43,7 +43,7 @@ run_panel <- fluidPage(
            radioButtons("massspecmode",
                               h3("MassSpec-Mode"),
                               choices = list("Orbitrap" = 1,
-                                             "TIMS-ToF Pro" = 2),
+                                             "timsTOF" = 2),
                               selected = 1),
 
            #actionButton("run_feature_alignment", "Only feature alignment",width = 170),
@@ -238,7 +238,7 @@ run_all_processes <- function(settings_list)
 
   n_cores <- settings_list$n_cores
 
-  MassSpec_mode <- ifelse(settings_list$MassSpec_settings=="1","Orbitrap","TIMSToF") #"1" Orbitrap "2" TIMSToF with IM "3" TIMSToF without IM
+  MassSpec_mode <- ifelse(settings_list$MassSpec_settings=="1","Orbitrap","TIMSToF") #"1" Orbitrap "2" TIMSToF
   use_IM_data <- ifelse(settings_list$MassSpec_settings=="2",T,F)
 
   path_to_extracted_spectra <- NA
@@ -693,7 +693,7 @@ server <- function(input, output,session)
       #massspec mode
       selection_mode <- ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == T,2,1)
 
-      updateRadioButtons(session,inputId = "massspecmode",choices = list("Orbitrap" = 1,"TIMS-ToF Pro" = 2),selected = selection_mode)
+      updateRadioButtons(session,inputId = "massspecmode",choices = list("Orbitrap" = 1,"timsTOF" = 2),selected = selection_mode)
 
 
     }
