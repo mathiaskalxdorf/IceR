@@ -43,8 +43,7 @@ run_panel <- fluidPage(
            radioButtons("massspecmode",
                               h3("MassSpec-Mode"),
                               choices = list("Orbitrap" = 1,
-                                             "TIMS-ToF Pro (use TIMS)" = 2,
-                                             "TIMS-ToF Pro (don´t use TIMS)" = 3),
+                                             "TIMS-ToF Pro" = 2),
                               selected = 1),
 
            #actionButton("run_feature_alignment", "Only feature alignment",width = 170),
@@ -76,41 +75,6 @@ run_panel <- fluidPage(
            helpText("Select the folder where the IceR results should be saved")
     )
 
-  ),
-
-  fluidRow(
-    column(3,
-           radioButtons("multiplicity_settings",
-                        h3("Multiplicity"),
-                        choices = list("1 - LFQ" = 1,
-                                       "2 - SILAC" = 2,
-                                       "3 - SILAC" = 3),
-                        selected = 1)),
-    column(3,
-           br(),
-           br(),
-           dropdownButton(
-             label = "Light labels", status = "default", width = 80,
-             checkboxGroupInput(inputId = "light_labels", label = "Light labels", choices = c("Lys2","Lys4","Lys6","Lys8","Arg6","Arg10"))
-           ),
-           helpText("Select heavy isotopes AA for Light")
-           ),
-    column(3,
-           br(),
-           br(),
-           dropdownButton(
-             label = "Medium labels", status = "default", width = 80,
-             checkboxGroupInput(inputId = "medium_labels", label = "Medium labels", choices = c("Lys2","Lys4","Lys6","Lys8","Arg6","Arg10"))
-           ),
-           helpText("Select heavy isotopes AA for Medium")),
-    column(3,
-           br(),
-           br(),
-           dropdownButton(
-             label = "Heavy labels", status = "default", width = 80,
-             checkboxGroupInput(inputId = "heavy_labels", label = "Heavy labels", choices = c("Lys2","Lys4","Lys6","Lys8","Arg6","Arg10"))
-           ),
-           helpText("Select heavy isotopes AA for Heavy"))
   ),
 
   fluidRow(
@@ -169,39 +133,15 @@ run_panel <- fluidPage(
 
     column(3,
            h3("Requantification settings")
-           # checkboxGroupInput("requant_settings",
-           #                    h3("Requantification settings"),
-           #                    choices = list("RT calibration" = 1,
-           #                                   "m/z calibration" = 2,
-           #                                   "Use Isotope ions" = 3,
-           #                                   "Intensity correction" = 4,
-           #                                   "Peak detection" = 5,
-           #                                   "Add PMPs" = 6,
-           #                                   "Plot 2D peak detection" = 7,
-           #                                   "MaxLFQ quantification" = 8
-           #                    ),
-           #                    selected = c(1,2,3,4,5,8))
     ),
     column(3,
            br(),br(),br(),
            h5("KDE resolution"),
            sliderInput("kde_resolution", "",
                        min = 10, max = 200, value = 50,step=5)
-           # h5("Alignment score cut"),
-           # sliderInput("Alignment_score_cut", "",
-           #             min = 0, max = 1, value = 0.05,step=0.005),
-           #
-           # h5("Quantification pValue"),
-           # sliderInput("Quant_pVal_cut", "",
-           #             min = 0, max = 1, value = 0.05,step=0.005)
     ),
     column(3,
            br(),br(),br(),
-
-
-           # h5("Stored peak count"),
-           # sliderInput("num_peaks_store", "",
-           #             min = 1, max = 10, value = 5,step=1),
 
            h5("Number of threads"),
            sliderInput("n_cores", "",
@@ -269,17 +209,17 @@ ui <- fluidPage(
 
 run_all_processes <- function(settings_list)
 {
-  align_unknown <- F#ifelse(any(settings_list$alignment_settings == "1"),T,F)
-  only_unmodified <- F#ifelse(any(settings_list$alignment_settings == "2"),T,F)
-
-  RT_calibration <- T#ifelse(any(settings_list$requant_settings == "1"),T,F)
-  mz_calibration <- T#ifelse(any(settings_list$requant_settings == "2"),T,F)
-  use_isotopes <- T#ifelse(any(settings_list$requant_settings == "3"),T,F)
-  intensity_correction <- T#ifelse(any(settings_list$requant_settings == "4"),T,F)
-  peak_detection <- T#ifelse(any(settings_list$requant_settings == "5"),T,F)
-  add_PMPs <- F#ifelse(any(settings_list$requant_settings == "6"),T,F)
-  plot_peak_detection <- F#ifelse(any(settings_list$requant_settings == "7"),T,F)
-  calc_protein_LFQ <- T#ifelse(any(settings_list$requant_settings == "8"),T,F)
+  #default parameters
+  align_unknown <- F
+  only_unmodified <- F
+  RT_calibration <- T
+  mz_calibration <- T
+  use_isotopes <- T
+  intensity_correction <- T
+  peak_detection <- T
+  add_PMPs <- F
+  plot_peak_detection <- F
+  calc_protein_LFQ <- T
 
 
   path_to_MaxQ_output <- ifelse(endsWith(settings_list$MaxQ_output_folder,"/"),
@@ -300,20 +240,6 @@ run_all_processes <- function(settings_list)
 
   MassSpec_mode <- ifelse(settings_list$MassSpec_settings=="1","Orbitrap","TIMSToF") #"1" Orbitrap "2" TIMSToF with IM "3" TIMSToF without IM
   use_IM_data <- ifelse(settings_list$MassSpec_settings=="2",T,F)
-
-  multiplicity <- ifelse(settings_list$multiplicity_settings == "1",1,
-                         ifelse(settings_list$multiplicity_settings == "2",2,3))
-
-
-  if(is.null(settings_list$light_labels))settings_list$light_labels <- ""
-  if(is.null(settings_list$medium_labels))settings_list$medium_labels <- ""
-  if(is.null(settings_list$heavy_labels))settings_list$heavy_labels <- ""
-
-  light_labels <- settings_list$light_labels
-
-  medium_labels <- settings_list$medium_labels
-
-  heavy_labels <- settings_list$heavy_labels
 
   path_to_extracted_spectra <- NA
   path_to_mzXML <- NA
@@ -336,7 +262,7 @@ run_all_processes <- function(settings_list)
     ###Save all parameters
     setProgress(cur_step,message="Prepare settings and parameters")
 
-    Parameters <- as.data.frame(matrix(ncol=2,nrow=30))
+    Parameters <- as.data.frame(matrix(ncol=2,nrow=26))
     colnames(Parameters) <- c("Settings_name","Setting")
     Parameters$Settings_name <- c("Path to raw files",
                                   "Path to MaxQ results",
@@ -363,11 +289,7 @@ run_all_processes <- function(settings_list)
                                   "kde_resolution",
                                   "num_peaks_store",
                                   "MassSpec_mode",
-                                  "use_IM_data",
-                                  "Multiplicity",
-                                  "Light_labels",
-                                  "Medium_labels",
-                                  "Heavy_labels")
+                                  "use_IM_data")
     Parameters$Setting <- c(settings_list$Raw_folder,
                             path_to_MaxQ_output,
                             path_to_output,
@@ -393,11 +315,7 @@ run_all_processes <- function(settings_list)
                             settings_list$kde_resolution,
                             settings_list$num_peaks_store,
                             MassSpec_mode,
-                            use_IM_data,
-                            multiplicity,
-                            paste(light_labels,collapse = ","),
-                            paste(medium_labels,collapse = ","),
-                            paste(heavy_labels,collapse = ","))
+                            use_IM_data)
 
     sample_list <- list.files(settings_list$Raw_folder)
     sample_list <- sample_list[which(grepl("\\.raw|\\.d",sample_list))]
@@ -435,19 +353,6 @@ run_all_processes <- function(settings_list)
     sample_list <- sample_list[which(grepl("\\.raw|\\.d",sample_list))]#& !grepl("Library|Lib",sample_list)
     sample_list <- gsub("\\.raw|\\.d","",sample_list)
 
-    if(multiplicity == 2)
-    {
-      sample_list <- sort(rep(sample_list,2))
-      channels <- c("_Channel_light","_Channel_heavy")
-      sample_list <- paste(sample_list,channels,sep="")
-    }
-    if(multiplicity == 3)
-    {
-      sample_list <- sort(rep(sample_list,3))
-      channels <- c("_Channel_light","_Channel_medium","_Channel_heavy")
-      sample_list <- paste(sample_list,channels,sep="")
-    }
-
     #check that more than 1 sample is specified
     if(length(sample_list) < 2)
     {
@@ -468,11 +373,7 @@ run_all_processes <- function(settings_list)
                    sample_list = sample_list,
                    MassSpec_mode = MassSpec_mode,
                    IM_window = NA,
-                   min_IM_window = 0.002,
-                   multiplicity = multiplicity,
-                   SILAC_settings = list(light=light_labels,
-                                         medium=medium_labels,
-                                         heavy=heavy_labels)
+                   min_IM_window = 0.002
     )
 
     print(paste(Sys.time(),"Feature alignmend finished"))
@@ -547,27 +448,12 @@ server <- function(input, output,session)
   suppressWarnings(suppressMessages(library(tcltk,quietly = T)))
   suppressWarnings(suppressMessages(library(rChoiceDialogs,quietly = T)))
 
-  #shinyjs::disable("alignment_settings")
-  #shinyjs::disable("requant_settings")
-  shinyjs::disable("light_labels")
-  shinyjs::disable("medium_labels")
-  shinyjs::disable("heavy_labels")
-
-
   ###select file paths
-  global_MaxQ_output_folder <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\MaxQ_Output")#getwd())
-  global_Raw_folder <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\test_shiny\\raw")#getwd())
-  global_IceR_output <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\test_shiny\\Results_folder")#getwd())
+  global_MaxQ_output_folder <- reactiveValues(datapath=getwd())
+  global_Raw_folder <- reactiveValues(datapath=getwd())
+  global_IceR_output <- reactiveValues(datapath=getwd())
 
   volumes <- getVolumes()
-
-  ##choose MaxQ output folder
-  # shinyDirChoose(
-  #   input,
-  #   'MaxQ_output_folder',
-  #   roots = getVolumes(),
-  #   #filetypes = c('', 'txt', 'bigWig', "tsv", "csv", "bw")
-  # )
 
   MaxQ_output_folder <- reactive({
     return(parseDirPath(volumes, input$MaxQ_output_folder))
@@ -713,32 +599,6 @@ server <- function(input, output,session)
   })
 
 
-  ###multiplicity
-  observeEvent(input$multiplicity_settings, {
-    if(input$multiplicity_settings == "1")#LFQ
-    {
-      shinyjs::disable("light_labels")
-      shinyjs::disable("medium_labels")
-      shinyjs::disable("heavy_labels")
-      updateCheckboxGroupInput(session,"light_labels",selected = 0)
-      updateCheckboxGroupInput(session,"medium_labels",selected = 0)
-      updateCheckboxGroupInput(session,"heavy_labels",selected = 0)
-    }
-    if(input$multiplicity_settings == "2")#SILAC
-    {
-      shinyjs::enable("light_labels")
-      shinyjs::disable("medium_labels")
-      shinyjs::enable("heavy_labels")
-      updateCheckboxGroupInput(session,"medium_labels",selected = 0)
-    }
-    if(input$multiplicity_settings == "3")#SILAC
-    {
-      shinyjs::enable("light_labels")
-      shinyjs::enable("medium_labels")
-      shinyjs::enable("heavy_labels")
-    }
-  })
-
   ###buttons
   observeEvent(input$run_all, {
 
@@ -758,11 +618,7 @@ server <- function(input, output,session)
                           n_cores = input$n_cores,
                           kde_resolution = input$kde_resolution,
                           num_peaks_store = 5,#input$num_peaks_store,
-                          MassSpec_settings = input$massspecmode,
-                          multiplicity_settings = input$multiplicity_settings,
-                          light_labels = input$light_labels,
-                          medium_labels = input$medium_labels,
-                          heavy_labels = input$heavy_labels)
+                          MassSpec_settings = input$massspecmode)
     run_all_processes(settings_list)
 
   })
@@ -835,56 +691,11 @@ server <- function(input, output,session)
       #                                                                    "MaxLFQ quantification" = 8),selected = selection)
 
       #massspec mode
-      selection_mode <- ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == T,2,
-                               ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == F,3,
-                               1))
+      selection_mode <- ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == T,2,1)
 
-      updateRadioButtons(session,inputId = "massspecmode",choices = list("Orbitrap" = 1,"TIMS-ToF Pro (use TIMS)" = 2,"TIMS-ToF Pro (don´t use TIMS)" = 3),selected = selection_mode)
+      updateRadioButtons(session,inputId = "massspecmode",choices = list("Orbitrap" = 1,"TIMS-ToF Pro" = 2),selected = selection_mode)
 
-      #multiplicity
-      selection_multiplicity <- ifelse(temp_settings$Setting[27] == "1",1,
-                                       ifelse(temp_settings$Setting[27] == "2",2,3))
 
-      updateRadioButtons(session,inputId = "multiplicity_settings",selected = selection_multiplicity)
-
-      #light, medium and heavy labels
-      light_labels <- as.character(str_split(temp_settings$Setting[28],pattern = ",",simplify = T))
-      medium_labels <- as.character(str_split(temp_settings$Setting[29],pattern = ",",simplify = T))
-      heavy_labels <- as.character(str_split(temp_settings$Setting[30],pattern = ",",simplify = T))
-
-      light_selection <- light_labels
-      if(length(light_selection) == 1)if(light_selection == "")light_selection <- 0
-      updateCheckboxGroupInput(session,inputId = "light_labels",selected = light_selection)
-
-      medium_selection <- medium_labels
-      if(length(medium_selection) == 1)if(medium_selection == "")medium_selection <- 0
-      updateCheckboxGroupInput(session,inputId = "medium_labels",selected = medium_selection)
-
-      heavy_selection <- heavy_labels
-      if(length(heavy_selection) == 1)if(heavy_selection == "")heavy_selection <- 0
-      updateCheckboxGroupInput(session,inputId = "heavy_labels",selected = heavy_selection)
-
-      # shinyjs::disable("alignment_settings")
-      # shinyjs::disable("requant_settings")
-      #
-      # if(selection_multiplicity == 1)
-      # {
-      #   shinyjs::disable("light_labels")
-      #   shinyjs::disable("medium_labels")
-      #   shinyjs::disable("heavy_labels")
-      # }
-      # if(selection_multiplicity == 2)
-      # {
-      #   shinyjs::enable("light_labels")
-      #   shinyjs::disable("medium_labels")
-      #   shinyjs::enable("heavy_labels")
-      # }
-      # if(selection_multiplicity == 3)
-      # {
-      #   shinyjs::enable("light_labels")
-      #   shinyjs::enable("medium_labels")
-      #   shinyjs::enable("heavy_labels")
-      # }
     }
   })
 

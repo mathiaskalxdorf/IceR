@@ -139,7 +139,6 @@ It allows setting up the IceR run. Among others, the following parameters can be
 
  - Paths to raw files, MaxQuant results files and IceR output folder
  - MassSpec Mode switching between Orbitrap and TIMS-ToF data (with or without using TIMS dimension)
- - Multiplicity Mode switching between label-free (1 - LFQ) and SILAC (2 - SILAC or 3 - SILAC) and adjusting corresponding label isotopes
  - Minimal retention (RT) and m/z feature alignment windows during feature-based PIP
  - Kernel density estimation (KDE) resolution (grid points per dimension, increasing resolution increases computation workload but also increases resolution of peak detections) 
  - Number of threads to be used during IceR workflow (please check on your system specifications. Should not be higher than numbers of samples to be analyzed. Number of threads should be also adapted to available RAM. In case of TIMS-ToF data, a single 2h gradient acquisition run will require ~ 40 gb of RAM, hence, number of threads will be automatically limited in this case to 3 parallel threads)
