@@ -135,7 +135,7 @@ run_panel <- fluidPage(
 
     column(3,
            br(),br(),br(),
-           h5("Minimal RT-Window"),
+           h5("Minimal RT-Window [min]"),
            sliderInput("min_RT_window", "",
                        min = 0, max = 10, value = 1.0,step=0.1),
 
@@ -146,7 +146,7 @@ run_panel <- fluidPage(
     ),
     column(3,
            br(),br(),br(),
-           h5("Minimal m/z-Window"),
+           h5("Minimal m/z-Window [Da]"),
            sliderInput("min_mz_window", "",
                        min = 0, max = 0.01, value = 0.001,step=0.0005),
 
