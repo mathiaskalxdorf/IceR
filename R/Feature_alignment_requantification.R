@@ -5063,7 +5063,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   ###Tag decoy features which overlap with real features
   remove_decoy_outlier <- vector(mode="logical",length=length(which(features$target_decoy == "decoy")))
   features_target <- features[which(features$target_decoy == "target"),]
-  decoy_indices <- which(features$target_decoy == "decoy" & !grepl("_d_i",features$Feature_name))
+  decoy_indices <- which(features$target_decoy == "decoy")
 
   max <- length(decoy_indices)
   pb <- tcltk::tkProgressBar(title = "Detect target-decoy overlapping features",label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
