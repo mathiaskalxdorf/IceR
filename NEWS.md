@@ -1,4 +1,12 @@
-# IceR 0.9.10
+# IceR 0.9.11
+
+## Fixes
+
+* Check that selected quantification columns in load_MaxQ_data() are available otherwise report suitable error.
+
+---
+
+IceR 0.9.10
 
 ## Fixes
 
