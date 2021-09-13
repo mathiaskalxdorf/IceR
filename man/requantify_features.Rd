@@ -7,7 +7,7 @@
 requantify_features(
   path_to_features,
   path_to_mzXML = NA,
-  path_to_MaxQ_output,
+  path_to_input,
   feature_table_file_name = "Features_aligned_merged_IceR_analysis.txt",
   output_file_names_add = "IceR_analysis",
   RT_calibration = T,
@@ -33,7 +33,7 @@ requantify_features(
 
 \item{path_to_mzXML}{Path to folder containing mzXML files of samples in case of Orbitrap data.}
 
-\item{path_to_MaxQ_output}{Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)}
+\item{path_to_input}{Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)}
 
 \item{feature_table_file_name}{File name which contains align_features() results. By default is set to Features_aligned_merged_IceR_analysis.txt.}
 

@@ -5,8 +5,9 @@
 \title{Perform alignment of pre-determined MS1-features by MaxQuant over proteomics samples either analyzed on an Orbitrap machine (e.g. Q-Exactive or Orbitrap Fusion) or a TIMS-ToF Pro}
 \usage{
 align_features(
-  path_to_MaxQ_output,
+  path_to_input,
   path_to_output,
+  preprocess_pipeline = "MaxQ",
   align_unknown = F,
   output_file_names_add = "IceR_analysis",
   mz_window = NA,
@@ -27,9 +28,11 @@ align_features(
 )
 }
 \arguments{
-\item{path_to_MaxQ_output}{Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)}
+\item{path_to_input}{Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)}
 
 \item{path_to_output}{Path to folder where IceR results should be stored}
+
+\item{preprocess_pipeline}{Preprocessing pipeline. Can be one of the following: MaxQ, User. User indicates that data was rearranged already manually. Defaults to MaxQ.}
 
 \item{align_unknown}{Boolean value indicating if only peptide features or also unsequenced features should be aligend over samples. By default set to F.}
 

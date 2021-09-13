@@ -189,6 +189,7 @@ load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all
 
   options(warn=0)
 }
+#To-Do: Add check if Gene_Name and UniProt_ID is available in IceR result otherwise currently crashes
 
 #' Load IceR result files
 #' @param path_to_parameter_file Optional path to IceR parameter file created during IceR run. By default set to NA. In this case a file browser is opened asking for the path to the Parameters.xlsx generated during IceR run.
@@ -332,13 +333,14 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
   features_sample_matrix_pvals <- utils::read.table(base::paste(path_to_requant_folder,"Features_quantification_pvals",file_name_extension,".tab",sep=""),header=T,sep = "\t")
   features_sample_matrix_S2B <- utils::read.table(base::paste(path_to_requant_folder,"Features_quantification_S2B",file_name_extension,".tab",sep=""),header=T,sep = "\t")
 
-
-
   data_protein_quant <- data_protein[,which(!grepl("median_alignment_score|median_quant_pvals|median_S2B",colnames(data_protein)))[-c(1:3)]]
   data_protein_pvals <- data_protein[,which(grepl("median_quant_pvals",colnames(data_protein)))]
   data_protein_S2B <- data_protein[,which(grepl("median_S2B",colnames(data_protein)))]
 
   ##prepare additional information per row on protein level
+  if (any(c("Gene_Name","UniProt_Identifier") %in% colnames(data_protein) == F)) stop("Either `Gene_Name` or `UniProt_Identifier` is missing as column in IceR outputs!")
+
+
   data_protein_info <- base::data.frame(Gene_name=stringr::str_split(data_protein$Gene_Name,";",simplify = T)[,1],
                                   ID=stringr::str_split(data_protein$UniProt_Identifier,";",simplify = T)[,1],
                                   Organism=MaxQ_data$Organism[match(stringr::str_split(data_protein$UniProt_Identifier,";",simplify = T)[,1],MaxQ_data$ID)],

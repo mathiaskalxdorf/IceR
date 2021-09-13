@@ -450,9 +450,826 @@ convert_rawTIMS <- function(path_to_raw=NULL)
   }
 }
 
-#' Perform alignment of pre-determined MS1-features by MaxQuant over proteomics samples either analyzed on an Orbitrap machine (e.g. Q-Exactive or Orbitrap Fusion) or a TIMS-ToF Pro
-#' @param path_to_MaxQ_output Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)
+
+#' Prepare preprocessed data for IceR
+#' @param path_to_folder Path to folder containing the results from the preprocessing pipeline (e.g. MaxQuant txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)
 #' @param path_to_output Path to folder where IceR results should be stored
+#' @param pipeline Preprocessing pipeline. Can be one of the following: MaxQ, Unique. Unique indicates that data was rearranged already manually. Defaults to MaxQ.
+#' @param sample_list Character vector (raw file names) listing which samples should be kept. By default all samples occurring in outputs are aligned.
+#' @param MassSpec_mode String being either "Orbitrap" or "TIMSToF" specifying by which type of Mass Spectrometer the data was generated. By default it expects Thermo Orbitrap data.
+#' @param multiplicity Numeric value between 1 - 3 indicating if multiple channels are mixed on MS1-level. Label-free corresponds to 1 and SILAC to 2 (light and heavy) or 3 (light, medium, heavy)
+#' @param SILAC_settings List of 3 string vectors named light, medium and heavy. Each string vector should indicate which heavy isotope of Lys and/or Arg was used for respective channel. String vectors can contain Lys2, Lys4, Lys6, Lys8, Arg6 and Arg10.
+#' @param remove_contaminants Boolean value indicating if peptide features labeled as contaminants should be removed. By default set to T.
+#' @details Rearranges data from preprocess pipeline so that data can be used by IceR
+#' @return Rearranged data is stored in the defined output folder ready for next steps of IceR and is returned as list object
+#' @export
+prepare_preprocessed_data <- function(path_to_folder,path_to_output,pipeline=c("MaxQ","User"),sample_list=NULL,MassSpec_mode=c("Orbitrap","TIMSToF"),multiplicity=c(1,2,3),SILAC_settings=list(light=c(""),medium=c("Lys4","Arg6"),heavy=c("Lys8","Arg10")),remove_contaminants=T)
+{
+  # pipeline <- "MaxQ"
+  # path_to_folder <- "Work\\0_General\\R\\IceR\\Example\\MaxQ_V2"
+  # path_to_output <- "Work\\0_General\\R\\IceR\\Example\\IceR_MaxQ_V2"
+  # MassSpec_mode="Orbitrap"
+  # multiplicity=1
+  # remove_contaminants=T
+  # sample_list=c("20200110_QE1_DDA_1H25_T5_E3_R1","20200110_QE1_DDA_1H25_T5_E3_R2","20200110_QE1_DDA_1H25_T5_E9_R1","20200110_QE1_DDA_1H25_T5_E9_R2")
+
+  setwd(path_to_folder)
+
+  #rearrange MaxQuant data
+  if(pipeline == "MaxQ")
+  {
+    options(fftempdir = path_to_folder)
+    print("Read MaxQ results")
+    temp <- utils::read.csv(file = "allPeptides.txt",sep='\t',nrows = 2044,header=T)
+    tempclasses = sapply(temp, class)
+    if(MassSpec_mode == "Orbitrap")
+    {
+      if(multiplicity == 1)
+      {
+        tempclasses["Intensity"] = "numeric"
+        tempclasses[which(tempclasses == "logical" | tempclasses == "character")] <- "factor"
+      }else
+      {
+        tempclasses["Intensity"] = "numeric"
+        tempclasses["Intensity.L"] = "numeric"
+        if(multiplicity == 3)tempclasses["Intensity.M"] = "numeric"
+        tempclasses["Intensity.H"] = "numeric"
+        tempclasses["Score"] = "numeric"
+        if(any(names(tempclasses) == "PEP"))tempclasses["PEP"] = "factor"
+        if(any(colnames(temp) == "Retention.Length..FWHM.")) tempclasses["Retention.Length..FWHM."] = "numeric"
+        if(any(colnames(temp) == "Retention.length..FWHM.")) tempclasses["Retention.length..FWHM."] = "numeric"
+        tempclasses[which(tempclasses == "logical" | tempclasses == "character")] <- "factor"
+      }
+
+    }else
+    {
+      if(multiplicity == 1)
+      {
+        tempclasses["m.z"] = "numeric"
+        tempclasses["Mass"] = "numeric"
+        tempclasses["Retention.time" ] = "numeric"
+        tempclasses["Retention.length"] = "numeric"
+        tempclasses["Ion.mobility.index"] = "numeric"
+        tempclasses["Ion.mobility.index.length"] = "numeric"
+        tempclasses[which(tempclasses == "logical" | tempclasses == "character")] <- "factor"
+      }
+    }
+    print("Read allPeptides.txt. This can take a while if the file is large!")
+    allpeptides_save <- ff::read.csv.ffdf(file = "allPeptides.txt",sep='\t',VERBOSE = F,colClasses=tempclasses,next.rows = 100000)##read in data in chunks of 100000 rows
+    print("Finished reading allPeptides.txt.")
+
+    allpeptides <- base::as.data.frame(allpeptides_save)
+    allpeptides <- allpeptides[order(allpeptides$Mass),]
+
+    if(multiplicity > 1)allpeptides <- allpeptides[which(allpeptides$Type != "ISO"),] ###remove ISO features as they are not adding anything at the moment
+
+    #allpeptidessave <- allpeptides
+    ###free some memory
+    rm(allpeptides_save)
+    gc()
+
+    if(!is.null(sample_list))
+    {
+      #check if all Raw.files are in sample_list and that all samples in sample_list are in Raw.file
+      all_samples_in_MaxQ <- sort(unique(allpeptides$Raw.file))
+
+      #Any samples specified for IceR but not available in MaxQ data?
+      if(any(sample_list %not in% all_samples_in_MaxQ))
+      {
+        missing <- which(sample_list %not in% all_samples_in_MaxQ)
+        options(warn=1)
+        warning(paste0(paste(sample_list[missing],collapse = ",")," is/are specified to be requantified by IceR but missing in MaxQuant results. This/these samples will be skipt by IceR."))
+        options(warn=-1)
+      }
+
+      #Any samples available in MaxQ but not specified for IceR?
+      if(any(all_samples_in_MaxQ %not in% sample_list))
+      {
+        missing <- which(all_samples_in_MaxQ %not in% sample_list)
+        options(warn=1)
+        warning(paste0(paste(all_samples_in_MaxQ[missing],collapse = ",")," is/are available in MaxQuant results but not specified to be requantified by IceR. This/these samples will be used for alignment but not requantified by IceR."))
+        options(warn=-1)
+      }
+    }
+
+    ##unify column names
+    #RT
+    if(length(which(colnames(allpeptides) == "Retention.Length"))==0) ###possibly upper and lower case problem
+    {
+      if(length(which(colnames(allpeptides) == "Retention.length"))>0) ###possibly upper and lower case problem
+      {
+        colnames(allpeptides)[which(colnames(allpeptides) == "Retention.length")] <- "Retention.Length"
+      }else
+      {
+        allpeptides$Retention.Length = 0
+      }
+    }
+
+    if(MassSpec_mode == "Orbitrap")allpeptides$Retention.Length <- allpeptides$Retention.Length/60 ##in Orbitrap allpeptides.txt the retention length is given in sec instead of min like in e.g. evidence.txt
+
+    #MSMS scan numbers
+    if(length(which(colnames(allpeptides) == "MSMS.Scan.Numbers"))==0)
+    {
+      if(length(which(colnames(allpeptides) == "MS.MS.scan.number"))>0)
+      {
+        colnames(allpeptides)[which(colnames(allpeptides) == "MS.MS.scan.number")] <- "MSMS.Scan.Numbers"
+      }else
+      {
+        allpeptides$MSMS.Scan.Numbers = 0
+      }
+    }
+
+    ###Some peptides are not available in allpeptides.txt thus we get this additional information from the evidence.txt file
+    print("Read evidence.txt. This can take a while if the file is large!")
+    evidence <- utils::read.csv(file = "evidence.txt",sep='\t',header=T)
+    print("Finished reading evidence.txt.")
+    if(any(colnames(evidence) == "MS.MS.Scan.Number"))colnames(evidence)[which(colnames(evidence) == "MS.MS.Scan.Number")] <- "MSMS.Scan.Numbers"
+    if(any(colnames(evidence) == "MS.MS.scan.number"))colnames(evidence)[which(colnames(evidence) == "MS.MS.scan.number")] <- "MSMS.Scan.Numbers"
+    if(any(colnames(evidence) == "MSMS.Scan.Numbers"))colnames(evidence)[which(colnames(evidence) == "MSMS.Scan.Numbers")] <- "MSMS.Scan.Numbers"
+    if(any(colnames(evidence) == "Retention.length"))colnames(evidence)[which(colnames(evidence) == "Retention.length")] <- "Retention.Length"
+    if(any(colnames(evidence) == "Ion.mobility.length"))colnames(evidence)[which(colnames(evidence) == "Ion.mobility.length")] <- "Ion.mobility.index.length"
+    if(any(colnames(evidence) == "Number.of.scans"))colnames(evidence)[which(colnames(evidence) == "Number.of.scans")] <- "Number.of.frames"
+
+    #load msms info in case of SILAC data
+    if(multiplicity > 1)
+    {
+      temp <- utils::read.csv(file = "msms.txt",sep='\t',nrows = 2044,header=T)
+      tempclasses = sapply(temp, class)
+      tempclasses[which(tempclasses != "factor")] <- "factor"
+      msms_save <- ff::read.csv.ffdf(file = "msms.txt",sep='\t',VERBOSE = F,colClasses=tempclasses,next.rows = 100000)##read in data in chunks of 100000 rows
+      msms <- base::as.data.frame(msms_save)
+
+      if(length(which(colnames(msms) == "Labeling.state"))==0) ###possibly upper and lower case problem
+      {
+        colnames(msms)[which(colnames(msms) == "Labeling.State")] <- "Labeling.state"
+      }
+
+      #match msms to evidence table
+      match_order <- match(evidence$Best.MS.MS,msms$id)
+
+      #add labeling state info from msms to evidence table
+      evidence$Labeling.State <- as.numeric(as.character(msms$Labeling.state))[match_order]
+    }
+
+    print("Read MaxQ results finished")
+
+    if(MassSpec_mode == "Orbitrap")
+    {
+      #in case of SILAC only use true identification per SILAC state as given (intensities could be requantified by MaxQ if setting enabled)
+      if(multiplicity > 1)
+      {
+        #remove unclear labeling states
+        sel <- which(is.na(evidence$Labeling.State) | evidence$Labeling.State == -1)
+        if(length(sel) > 0)evidence <- evidence[-sel,]
+
+        #remove intensities of silac channels which were not directly identified
+        evidence$Intensity.H[which(evidence$Labeling.State == 0)] <- NA
+        evidence$Intensity.M[which(evidence$Labeling.State == 0)] <- NA
+        evidence$Intensity.H[which(evidence$Labeling.State == 1)] <- NA
+        evidence$Intensity.L[which(evidence$Labeling.State == 1)] <- NA
+        evidence$Intensity.L[which(evidence$Labeling.State == 2)] <- NA
+        evidence$Intensity.M[which(evidence$Labeling.State == 2)] <- NA
+      }
+
+      add_data <- base::as.data.frame(matrix(ncol=ncol(allpeptides),nrow=nrow(evidence),NA))
+      colnames(add_data) <- colnames(allpeptides)
+      match_col_names <- match(colnames(allpeptides),colnames(evidence))
+      data.table::set(add_data,j=as.integer(which(!is.na(match_col_names))),value = evidence[,match_col_names[which(!is.na(match_col_names))]])
+
+      ####now find rows (peptides + modification + sample) which are not yet present in allpeptides.txt
+      temp1 <- base::paste(add_data$Sequence,add_data$Modifications,add_data$Raw.file,sep="_")
+      temp2 <- base::paste(allpeptides$Sequence,allpeptides$Modifications,allpeptides$Raw.file,sep="_")
+      add_data <- add_data[which(temp1 %not in% temp2),]
+      allpeptides <- rbind(allpeptides,add_data)
+      rm(temp1,temp2,add_data)
+      gc()
+    }
+
+    if(MassSpec_mode == "TIMSToF")
+    {
+      add_data <- base::as.data.frame(matrix(ncol=ncol(allpeptides),nrow=nrow(evidence),NA))
+      colnames(add_data) <- colnames(allpeptides)
+      match_col_names <- match(colnames(allpeptides),colnames(evidence))
+      data.table::set(add_data,j=as.integer(which(!is.na(match_col_names))),value = evidence[,match_col_names[which(!is.na(match_col_names))]])
+
+      ###in TIMS allpeptides.txt column sequence and modification is missing thus take evidence table completeley
+      add_data$Sequence <- evidence$Sequence
+      add_data$Modifications <- evidence$Modifications
+      add_data$Proteins <- evidence$Proteins
+      add_data$Score <- evidence$Score
+
+      allpeptides$Sequence <- ""
+      allpeptides$Modifications <- ""
+      allpeptides$Proteins <- ""
+      allpeptides$Score <- NA
+      allpeptides$Score <- as.numeric(allpeptides$Score)
+
+      allpeptides <- rbind(allpeptides,add_data)
+      rm(add_data)
+      gc()
+
+      ###convert Ion.mobility.index into 1/K0
+      fit <- stats::lm(evidence$X1.K0~evidence$Ion.mobility.index)
+      allpeptides$inverse_K0 <- (allpeptides$Ion.mobility.index*fit$coefficients[2])+fit$coefficients[1]
+      allpeptides$inverse_K0_length <- allpeptides$Ion.mobility.index.length/1000
+
+    }
+
+    #if in SILAC mode, treat each channel as individual sample
+    if(multiplicity > 1)
+    {
+      temp_allpeptides <- base::as.data.frame(matrix(ncol=ncol(allpeptides)+4,nrow=0))
+      colnames(temp_allpeptides) <- c(colnames(allpeptides),"m.z_SILAC","m.z_SILAC_uncalibrated","Lys_count","Arg_count")
+
+      #change intensities set to 0 to NA
+      allpeptides$Intensity.L[allpeptides$Intensity.L == 0] <- NA
+      allpeptides$Intensity.M[allpeptides$Intensity.M == 0] <- NA
+      allpeptides$Intensity.H[allpeptides$Intensity.H == 0] <- NA
+
+      #Now expand every evidence row to an individual row per SILAC state where intensity != NA
+      for(s in unique(allpeptides$Raw.file))
+      {
+        for(label in names(SILAC_settings))
+        {
+          if(label == "light")sel <- which(allpeptides$Raw.file == s & !is.na(allpeptides$Intensity.L))
+          if(label == "medium")sel <- which(allpeptides$Raw.file == s & !is.na(allpeptides$Intensity.M))
+          if(label == "heavy")sel <- which(allpeptides$Raw.file == s & !is.na(allpeptides$Intensity.H))
+
+          #set intensity column to observed intensity in respective channel
+          temp <- allpeptides[sel,]
+          if(label == "light")temp$Intensity <- temp$Intensity.L
+          if(label == "medium")temp$Intensity <- temp$Intensity.M
+          if(label == "heavy")temp$Intensity <- temp$Intensity.H
+
+          #set observed m/z at max intensity
+          if(label == "light")temp$Max.intensity.m.z.0 <- temp$Max.intensity.m.z.0
+          if(label == "medium")temp$Max.intensity.m.z.0 <- temp$Max.intensity.m.z.1
+          if(label == "heavy")temp$Max.intensity.m.z.0 <- temp$Max.intensity.m.z.2
+
+          #get number of Lys and Arg per feature
+          count_AA_K <- ifelse(temp$Sequence != " ",stringr::str_count(temp$Sequence, "K"),NA)
+          count_AA_R <- ifelse(temp$Sequence != " ",stringr::str_count(temp$Sequence, "R"),NA)
+          if(any(colnames(temp) == "Lys.Count"))
+          {
+            temp$Lys_count <- ifelse(!is.na(temp$Lys.Count),temp$Lys.Count,count_AA_K)
+          }else
+          {
+            temp$Lys_count <- count_AA_K
+          }
+          if(any(colnames(temp) == "Arg.Count"))
+          {
+            temp$Arg_count <- ifelse(!is.na(temp$Arg.Count),temp$Arg.Count,count_AA_R)
+          }else
+          {
+            temp$Arg_count <- count_AA_R
+          }
+
+          #check if m/z shifts come from only Lys, only Arg or both
+          #if only coming from Lys then only keep features for which Lys count is known
+          #if only coming from Arg then only keep features for which Arg count is known
+          #in case of both, require Lys and Arg count to be known
+          #further filter for features with at least one of each required AA otherwise L, M and H channels can not be distinguished
+          if(require_lys == T & require_arg == T)
+          {
+            temp <- temp[which(!is.na(temp$Lys_count) & temp$Lys_count > 0 | !is.na(temp$Arg_count) & temp$Arg_count > 0),]
+          }else if(require_lys == T)
+          {
+            temp <- temp[which(!is.na(temp$Lys_count) & temp$Lys_count > 0),]
+          }else if(require_arg == T)
+          {
+            temp <- temp[which(!is.na(temp$Arg_count) & temp$Arg_count > 0),]
+          }
+          temp$Lys_count[is.na(temp$Lys_count)] <- 0
+          temp$Arg_count[is.na(temp$Arg_count)] <- 0
+
+          #adjust m/z to m/z including expected mass shift
+          temp$m.z_SILAC <- temp$m.z + ((SILAC_settings[[label]]$mass_shift_Lys*temp$Lys_count)/temp$Charge) + ((SILAC_settings[[label]]$mass_shift_Arg*temp$Arg_count)/temp$Charge)
+          temp$m.z_SILAC_uncalibrated <- temp$Uncalibrated.m.z + + ((SILAC_settings[[label]]$mass_shift_Lys*temp$Lys_count)/temp$Charge) + ((SILAC_settings[[label]]$mass_shift_Arg*temp$Arg_count)/temp$Charge)
+
+          #adjust raw file name
+          temp$Raw.file <- base::paste(s,"_Channel_",label,sep="")
+
+          temp_allpeptides <- rbind(temp_allpeptides,temp)
+        }
+      }
+
+      allpeptides <- temp_allpeptides
+    }
+
+    ###if no specific sample list is defined which should be used, use all raw files
+    if(is.null(sample_list))
+    {
+      sample_list <- sort(unique(allpeptides$Raw.file))
+    }
+
+    ###clean allpeptides table to reduce required memory space
+    if(MassSpec_mode == "Orbitrap")
+    {
+      if(multiplicity == 1)
+      {
+        if(any(colnames(allpeptides) == "Resolution"))
+        {
+          allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","Mass","Uncalibrated.m.z","Resolution","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity")]
+        }else
+        {
+          allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","Mass","Uncalibrated.m.z","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity")]
+          allpeptides$Resolution <- 0
+        }
+      }else if(multiplicity > 1)
+      {
+        if(any(colnames(allpeptides) == "Resolution"))
+        {
+          allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","m.z_SILAC","Mass","Uncalibrated.m.z","m.z_SILAC_uncalibrated","Resolution","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity","Lys_count","Arg_count")]
+        }else
+        {
+          allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","m.z_SILAC","Mass","Uncalibrated.m.z","m.z_SILAC_uncalibrated","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity","Lys_count","Arg_count")]
+          allpeptides$Resolution <- 0
+        }
+
+      }
+
+    }
+    if(MassSpec_mode == "TIMSToF")
+    {
+      allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","Mass","Retention.time","Retention.Length","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity","inverse_K0","inverse_K0_length")]
+      allpeptides$Resolution <- 0 ###no resolution information available
+    }
+
+    if(remove_contaminants == T)exclude <- which(grepl("CON",allpeptides$Proteins) | grepl("REV",allpeptides$Proteins))
+    if(remove_contaminants == F)exclude <- which(grepl("REV",allpeptides$Proteins))
+    if(length(exclude) > 0)allpeptides <- allpeptides[-exclude,] ###remove potential reverse and contaminant peptides
+
+
+    ###add calibrated RT to all peptides
+    if(multiplicity == 1)
+    {
+      temp_evidence <- evidence[,c("Sequence","Raw.file","Charge","Modifications","Calibrated.retention.time")]
+      temp_evidence <- stats::aggregate(temp_evidence$Calibrated.retention.time,list(Sequence=evidence$Sequence,Raw.file=evidence$Raw.file,Charge=evidence$Charge,Modifications=evidence$Modifications),FUN=mean,na.rm=T)
+      colnames(temp_evidence)[5] <- "Calibrated.retention.time"
+      temp <- dplyr::left_join(allpeptides,temp_evidence,by=c("Sequence"="Sequence","Raw.file"="Raw.file","Charge"="Charge","Modifications"="Modifications"))
+
+      missing_RT_calibration_indices <- which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")
+      if(length(missing_RT_calibration_indices)>0)
+      {
+        for(ind in missing_RT_calibration_indices)
+        {
+          sub <- temp[which(temp$Sequence == temp$Sequence[ind] & temp$Modifications == temp$Modifications[ind]),]
+          temp$Calibrated.retention.time[ind] <- stats::median(sub$Calibrated.retention.time,na.rm=T)
+        }
+      }
+
+      ###if any peptide feature still doesn?t have a valid calibrated RT --> just use observed RT
+      temp$Calibrated.retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")] <- temp$Retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")]
+      allpeptides <- temp
+    }else if(multiplicity > 1)
+    {
+      temp_evidence <- evidence[,c("Sequence","Raw.file","Charge","Modifications","Calibrated.retention.time")]
+      temp_evidence <- stats::aggregate(temp_evidence$Calibrated.retention.time,list(Sequence=evidence$Sequence,Raw.file=evidence$Raw.file,Charge=evidence$Charge,Modifications=evidence$Modifications),FUN=mean,na.rm=T)
+      colnames(temp_evidence)[5] <- "Calibrated.retention.time"
+      allpeptides$Raw.file_orig <- base::gsub("_Channel_light|_Channel_medium|_Channel_heavy","",allpeptides$Raw.file)
+      temp <- dplyr::left_join(allpeptides,temp_evidence,by=c("Sequence"="Sequence","Raw.file_orig"="Raw.file","Charge"="Charge","Modifications"="Modifications"))
+
+      missing_RT_calibration_indices <- which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")
+      if(length(missing_RT_calibration_indices)>0)
+      {
+        for(ind in missing_RT_calibration_indices)
+        {
+          sub <- temp[which(temp$Sequence == temp$Sequence[ind] & temp$Modifications == temp$Modifications[ind]),]
+          temp$Calibrated.retention.time[ind] <- stats::median(sub$Calibrated.retention.time,na.rm=T)
+        }
+      }
+
+      ###if any peptide feature still doesn?t have a valid calibrated RT --> just use observed RT
+      temp$Calibrated.retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")] <- temp$Retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")]
+      allpeptides <- temp
+    }
+
+    #determine isotope corrected m/z
+    if(MassSpec_mode == "Orbitrap" & multiplicity == 1)
+    {
+      ###calculate deviations between samples
+      add <- base::as.data.frame(matrix(nrow=nrow(allpeptides),ncol=3))
+      colnames(add) <- c("isotope_at_max_int","isotope_corrected_mz_at_max_int","delta_mz_to_mz_at_max_int")
+      add[,1] <- as.numeric(add[,1])
+      add[,2] <- as.numeric(add[,2])
+      add[,3] <- as.numeric(add[,3])
+
+      isotopes <- matrix(nrow=nrow(allpeptides),ncol=4)
+      isotopes[,1] <- allpeptides$m.z
+      isotopes[,2] <- ((allpeptides$m.z*allpeptides$Charge)+(1*1.002054))/allpeptides$Charge
+      isotopes[,3] <- ((allpeptides$m.z*allpeptides$Charge)+(2*1.002054))/allpeptides$Charge
+      isotopes[,4] <- ((allpeptides$m.z*allpeptides$Charge)+(3*1.002054))/allpeptides$Charge
+
+      max <- nrow(allpeptides)
+      pb <- tcltk::tkProgressBar(title = "Determine deviations of true m/z from observed m/z",label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+      start_time <- Sys.time()
+      updatecounter <- 0
+      time_require <- 0
+      for(i in 1:nrow(allpeptides))
+      {
+        if(!is.na(allpeptides$Max.intensity.m.z.0[i]))
+        {
+          mz_max_int <- allpeptides$Max.intensity.m.z.0[i]
+          deltas <- abs(isotopes[i,] - mz_max_int)
+          closest_iso <- which(deltas == min(deltas,na.rm=T))-1
+          if(closest_iso > 0) ###+1 or +2 or +3 isotope shows highest intensity
+          { ##correct back to isotope +0 m/z
+            iso_mult <- closest_iso*1.002054
+            mz_max_int <- ((mz_max_int*allpeptides$Charge[i])-(iso_mult))/allpeptides$Charge[i]
+          }
+          delta_mz_to_mz_at_max_int <- mz_max_int - allpeptides$m.z[i]
+          data.table::set(add,as.integer(i),as.integer(1:3),value=as.list(c(closest_iso,mz_max_int,delta_mz_to_mz_at_max_int)))
+        }
+
+        updatecounter <- updatecounter + 1
+        if(updatecounter >= 100)
+        {
+          time_elapsed <- difftime(Sys.time(),start_time,units="secs")
+          time_require <- (time_elapsed/(i/max))*(1-(i/max))
+          td <- lubridate::seconds_to_period(time_require)
+          time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
+
+          updatecounter <- 0
+          tcltk::setTkProgressBar(pb, i, label=base::paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
+        }
+      }
+      close(pb)
+
+      allpeptides <- cbind(allpeptides,add)
+
+      ###evidence table
+
+      add <- base::as.data.frame(matrix(nrow=nrow(evidence),ncol=3))
+      colnames(add) <- c("isotope_at_max_int","isotope_corrected_mz_at_max_int","delta_mz_to_mz_at_max_int")
+      add[,1] <- as.numeric(add[,1])
+      add[,2] <- as.numeric(add[,2])
+      add[,3] <- as.numeric(add[,3])
+
+      isotopes <- matrix(nrow=nrow(evidence),ncol=4)
+      isotopes[,1] <- evidence$m.z
+      isotopes[,2] <- ((evidence$m.z*evidence$Charge)+(1*1.002054))/evidence$Charge
+      isotopes[,3] <- ((evidence$m.z*evidence$Charge)+(2*1.002054))/evidence$Charge
+      isotopes[,4] <- ((evidence$m.z*evidence$Charge)+(3*1.002054))/evidence$Charge
+
+      max <- nrow(evidence)
+      pb <- tcltk::tkProgressBar(title = "Determine deviations of true m/z from observed m/z",label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+      start_time <- Sys.time()
+      updatecounter <- 0
+      time_require <- 0
+
+      for(i in 1:nrow(evidence))
+      {
+        if(!is.na(evidence$Max.intensity.m.z.0[i]))
+        {
+          mz_max_int <- evidence$Max.intensity.m.z.0[i]
+          deltas <- abs(isotopes[i,] - mz_max_int)
+          closest_iso <- which(deltas == min(deltas,na.rm=T))-1
+          if(closest_iso > 0) ###+1 or +2 or +3 isotope shows highest intensity
+          { ##correct back to isotope +0 m/z
+            iso_mult <- closest_iso*1.002054
+            mz_max_int <- ((mz_max_int*evidence$Charge[i])-(iso_mult))/evidence$Charge[i]
+          }
+          delta_mz_to_mz_at_max_int <- mz_max_int - evidence$m.z[i]
+          data.table::set(add,as.integer(i),as.integer(1:3),value=as.list(c(closest_iso,mz_max_int,delta_mz_to_mz_at_max_int)))
+        }
+
+        updatecounter <- updatecounter + 1
+        if(updatecounter >= 100)
+        {
+          time_elapsed <- difftime(Sys.time(),start_time,units="secs")
+          time_require <- (time_elapsed/(i/max))*(1-(i/max))
+          td <- lubridate::seconds_to_period(time_require)
+          time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
+
+          updatecounter <- 0
+          tcltk::setTkProgressBar(pb, i, label=base::paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
+        }
+      }
+      close(pb)
+
+      evidence <- cbind(evidence,add)
+    }
+
+    ###get additional information into allpeptides
+    match <- match(paste(allpeptides$Raw.file,allpeptides$Charge,allpeptides$Sequence,allpeptides$Modifications,allpeptides$MS.MS.IDs),
+                   paste(evidence$Raw.file,evidence$Charge,evidence$Sequence,evidence$Modifications,evidence$MS.MS.IDs),)
+
+    allpeptides$Uncalibrated...Calibrated.m.z..Da. <- evidence$Uncalibrated...Calibrated.m.z..Da.[match]
+
+    ###finally save prepared feature data
+    setwd(path_to_output)
+    save(allpeptides,file = "Temporary_files/allFeatures.RData")
+
+    #relevant columns
+    #Raw.file -> file name
+    #Charge -> Charge state different than NA
+    #m.z -> calibrated m/z
+    #Mass -> calibrated m/z - (Charge * 1.0073) (Mass of proton)
+    #Uncalibrated.m.z -> uncalibrated m/z
+    #Resolution -> optional
+    #Max.intensity.m.z.0 -> m/z at which max intensity was observed an most likely MSMS was triggered
+    #Retention.time -> raw retention time at which feature was detected
+    #Retention.Length -> Peak width in min
+    #Sequence -> Peptide sequence if it is an identified feature
+    #Modifications -> Peptide modification, if not modified it should be "Unmodified"
+    #Proteins -> Protein identified matching to peptide
+    #Score -> Any score value for the spectra to peptide matching with normal distribued scores and higher score representing higher significance
+    #MSMS.Scan.Numbers -> Indices of MSMS spectra which matched to the peptide sequence matched to the feature (optinal)
+    #Intensity -> Extracted feature intensity by preprocessing pipeline
+    #Calibrated.retention.time -> calibrated RT if available otherwise just RT
+    #isotope_at_max_int -> estimation which isotope is present at detected feature m/z (+0 isotope = 0, +1 isotope = 1 and so on)
+    #isotope_corrected_mz_at_max_int -> corrected m/z at max int (no correction if already at isotope = 0)
+    #delta_mz_to_mz_at_max_int -> deviation between true m/z and m/z at maximum intensity where MSMS was triggered
+    #Uncalibrated...Calibrated.m.z..Da. -> deviation between uncalibrated and calibrated m/z
+
+    # temp <- allpeptides[which(allpeptides$Sequence != " "),]
+    #
+    # temp1 <- temp[,c("Raw.file",
+    #                  "Charge",
+    #                  "Mass",
+    #                  "m.z",
+    #                  "Uncalibrated.m.z",
+    #                  "Max.intensity.m.z.0",
+    #                  "Retention.time",
+    #                  "Calibrated.retention.time",
+    #                  "Retention.Length",
+    #                  "Sequence",
+    #                  "Modifications",
+    #                  "Score",
+    #                  "Proteins",
+    #                  "Intensity")]
+    # write.table(temp1,file = "features.txt",sep = "\t",row.names = F)
+    #optional Mass Uncalibrated.m.z, Max.intensity.m.z.0, Calibrated.retention.time, Resolution, Intensity (!NA), MSMS.Scan.Numbers
+
+    ###next prepare available peptide data
+    print("Read peptides.txt and proteinGroups.txt. This might take a while if the files are large.")
+    MaxQ_peptides <- utils::read.table(base::paste(path_to_folder,"/peptides.txt",sep=""),sep="\t",header=T)
+    MaxQ_protein_groups <- utils::read.table(base::paste(path_to_folder,"/proteinGroups.txt",sep=""),sep="\t",header=T)
+    print("Finished reading peptides.txt and proteinGroups.txt.")
+
+    if (any(c("Gene.names","Protein.IDs") %in% colnames(MaxQ_protein_groups) == F)) {
+      stop("proteinGroups.txt does not contain the column `Gene names`. Was the fasta file correctly parsed?")
+    }
+    if (any(c("Sequence","Leading.razor.protein") %in% colnames(MaxQ_peptides) == F)) {
+      stop("peptides.txt does not contain at least one of the columns `Sequence` or `Leading.razor.protein`. Something is wrong with the MaxQ input. Wrong MaxQ version?")
+    }
+
+    if(remove_contaminants == T)MaxQ_peptides <- MaxQ_peptides[-which(MaxQ_peptides$Potential.contaminant == "+" | MaxQ_peptides$Reverse == "+"),]
+    if(multiplicity == 1)MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.",colnames(MaxQ_peptides)))]
+    if(multiplicity > 1)MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.[LMH]\\.",colnames(MaxQ_peptides)))]
+
+    if (ncol(MaxQ_peptides_quant) == 0) stop("peptides.txt does not contain quantifications per sample. Only a single sample analyzed?")
+
+    MaxQ_peptides_quant[MaxQ_peptides_quant==0] <- NA
+    MaxQ_peptides_quant <- base::log2(MaxQ_peptides_quant)
+
+    peptides <- data.frame(Sequence=MaxQ_peptides$Sequence,
+                           ID=as.character(MaxQ_peptides$Leading.razor.protein),
+                           MaxQ_peptides_quant)
+
+    ###prepare mapping from protein ID to gene name
+    MaxQ_protein_groups <- MaxQ_protein_groups[,c("Gene.names","Protein.IDs")]
+    MaxQ_protein_groups <- MaxQ_protein_groups[which(MaxQ_protein_groups$Gene.names != ""),]
+
+    id_mapping <- data.frame(ID=unique(as.character(stringr::str_split(MaxQ_protein_groups$Protein.IDs,";",simplify = T))),
+                             Gene_Name="")
+    id_mapping$Gene_Name <- as.character(id_mapping$Gene_Name)
+
+    id_mapping$ID <- gsub("\\(|\\)","",id_mapping$ID)
+
+    for(i in 1:nrow(id_mapping))
+    {
+      id_mapping$Gene_Name[i] <- as.character(MaxQ_protein_groups$Gene.names[which(grepl(id_mapping$ID[i],MaxQ_protein_groups$Protein.IDs))])
+    }
+
+    id_mapping$Gene_Name <- as.character(stringr::str_split(id_mapping$Gene_Name,";",simplify = T)[,1])
+
+    ###finally store data
+    setwd(path_to_output)
+    save(id_mapping,file = "Temporary_files/id_mapping.RData")
+    save(peptides,file = "Temporary_files/preprocess_quant.RData")
+
+    ###relevant columns for peptides
+    #Sequence
+    #ID
+    #columns with observed peptide intensities in preprocess pipeline with names
+    #Intensity.SampleID .... eg. Intensity.E3_R1
+
+    ###relevant columns for id_mapping
+    #ID e.g. uniprot identified
+    #Gene_Name Gene name matching to id
+
+    #write.table(id_mapping,file = "id_mapping.txt",sep = "\t",row.names = F)
+    #write.table(peptides,file = "preprocess_quant.txt",sep = "\t",row.names = F)
+
+  }else if(pipeline == "User")
+  {
+    ##read all detected features
+    options(fftempdir = path_to_folder)
+    print("Read preprocessed results")
+    temp <- utils::read.csv(file = "features.txt",sep='\t',nrows = 2044,header=T)
+    tempclasses = sapply(temp, class)
+    if(MassSpec_mode == "Orbitrap")
+    {
+      tempclasses["Raw.file"] = "factor"
+      tempclasses["Charge"] = "integer"
+      if(any(colnames(temp) == "Mass")) tempclasses["Mass"] = "numeric"
+      tempclasses["m.z"] = "numeric"
+      if(any(colnames(temp) == "Uncalibrated.m.z")) tempclasses["Uncalibrated.m.z"] = "numeric"
+      if(any(colnames(temp) == "Max.intensity.m.z.0")) tempclasses["Max.intensity.m.z.0"] = "numeric"
+      if(any(colnames(temp) == "Resolution")) tempclasses["Resolution"] = "numeric"
+      tempclasses["Retention.time"] = "numeric"
+      if(any(colnames(temp) == "Calibrated.retention.time")) tempclasses["Calibrated.retention.time"] = "numeric"
+      tempclasses["Retention.Length"] = "numeric"
+      tempclasses["Sequence"] = "factor"
+      tempclasses["Modifications"] = "factor"
+      tempclasses["Score"] = "numeric"
+      tempclasses["Proteins"] = "factor"
+      if(any(colnames(temp) == "Intensity")) tempclasses["Intensity"] = "numeric"
+      if(any(colnames(temp) == "MSMS.Scan.Numbers")) tempclasses["MSMS.Scan.Numbers"] = "factor"
+
+    }else
+    {
+      tempclasses["Raw.file"] = "factor"
+      tempclasses["Charge"] = "integer"
+      if(any(colnames(temp) == "Mass")) tempclasses["Mass"] = "numeric"
+      tempclasses["m.z"] = "numeric"
+      if(any(colnames(temp) == "Uncalibrated.m.z")) tempclasses["Uncalibrated.m.z"] = "numeric"
+      if(any(colnames(temp) == "Max.intensity.m.z.0")) tempclasses["Max.intensity.m.z.0"] = "numeric"
+      if(any(colnames(temp) == "Resolution")) tempclasses["Resolution"] = "numeric"
+      tempclasses["Retention.time"] = "numeric"
+      if(any(colnames(temp) == "Calibrated.retention.time")) tempclasses["Calibrated.retention.time"] = "numeric"
+      tempclasses["Retention.Length"] = "numeric"
+      tempclasses["inverse_K0"] = "numeric"
+      tempclasses["inverse_K0_length"] = "numeric"
+      tempclasses["Sequence"] = "factor"
+      tempclasses["Modifications"] = "factor"
+      tempclasses["Score"] = "numeric"
+      tempclasses["Proteins"] = "factor"
+      if(any(colnames(temp) == "Intensity")) tempclasses["Intensity"] = "numeric"
+      if(any(colnames(temp) == "MSMS.Scan.Numbers")) tempclasses["MSMS.Scan.Numbers"] = "factor"
+    }
+    allpeptides_save <- ff::read.csv.ffdf(file = "features.txt",sep='\t',VERBOSE = F,colClasses=tempclasses,next.rows = 100000)##read in data in chunks of 100000 rows
+
+    allpeptides <- base::as.data.frame(allpeptides_save)
+
+    rm(allpeptides_save)
+    gc()
+
+    if(!any(colnames(allpeptides) == "Mass"))
+    {
+      allpeptides$Mass <- (allpeptides$m.z*allpeptides$Charge) - (1.0073 * allpeptides$Charge)
+    }
+
+    allpeptides <- allpeptides[order(allpeptides$Mass),]
+
+    if(!is.null(sample_list))
+    {
+      #check if all Raw.files are in sample_list and that all samples in sample_list are in Raw.file
+      all_samples_in_input <- sort(unique(allpeptides$Raw.file))
+
+      #Any samples specified for IceR but not available in input data?
+      if(any(sample_list %not in% all_samples_in_input))
+      {
+        missing <- which(sample_list %not in% all_samples_in_input)
+        options(warn=1)
+        warning(paste0(paste(sample_list[missing],collapse = ",")," is/are specified to be requantified by IceR but missing in input data This/these samples will be skipt by IceR."))
+        options(warn=-1)
+      }
+
+      #Any samples available in input but not specified for IceR?
+      if(any(all_samples_in_input %not in% sample_list))
+      {
+        missing <- which(all_samples_in_input %not in% sample_list)
+        options(warn=1)
+        warning(paste0(paste(all_samples_in_input[missing],collapse = ",")," is/are available in input data but not specified to be requantified by IceR. This/these samples will be used for alignment but not requantified by IceR."))
+        options(warn=-1)
+      }
+    }
+
+    if(!any(colnames(allpeptides) == "Max.intensity.m.z.0"))
+    {
+      allpeptides$Max.intensity.m.z.0 <- allpeptides$m.z
+    }
+
+    if(MassSpec_mode == "Orbitrap" & multiplicity == 1)
+    {
+      ###calculate deviations in mz between observed and isotope corrected mz
+      add <- base::as.data.frame(matrix(nrow=nrow(allpeptides),ncol=3))
+      colnames(add) <- c("isotope_at_max_int","isotope_corrected_mz_at_max_int","delta_mz_to_mz_at_max_int")
+      add[,1] <- as.numeric(add[,1])
+      add[,2] <- as.numeric(add[,2])
+      add[,3] <- as.numeric(add[,3])
+
+      isotopes <- matrix(nrow=nrow(allpeptides),ncol=4)
+      isotopes[,1] <- allpeptides$m.z
+      isotopes[,2] <- ((allpeptides$m.z*allpeptides$Charge)+(1*1.002054))/allpeptides$Charge
+      isotopes[,3] <- ((allpeptides$m.z*allpeptides$Charge)+(2*1.002054))/allpeptides$Charge
+      isotopes[,4] <- ((allpeptides$m.z*allpeptides$Charge)+(3*1.002054))/allpeptides$Charge
+
+      max <- nrow(allpeptides)
+      pb <- tcltk::tkProgressBar(title = "Determine deviations of true m/z from observed m/z",label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+      start_time <- Sys.time()
+      updatecounter <- 0
+      time_require <- 0
+      for(i in 1:nrow(allpeptides))
+      {
+        if(!is.na(allpeptides$Max.intensity.m.z.0[i]))
+        {
+          mz_max_int <- allpeptides$Max.intensity.m.z.0[i]
+          deltas <- abs(isotopes[i,] - mz_max_int)
+          closest_iso <- which(deltas == min(deltas,na.rm=T))-1
+          if(closest_iso > 0) ###+1 or +2 or +3 isotope shows highest intensity
+          { ##correct back to isotope +0 m/z
+            iso_mult <- closest_iso*1.002054
+            mz_max_int <- ((mz_max_int*allpeptides$Charge[i])-(iso_mult))/allpeptides$Charge[i]
+          }
+          delta_mz_to_mz_at_max_int <- mz_max_int - allpeptides$m.z[i]
+          data.table::set(add,as.integer(i),as.integer(1:3),value=as.list(c(closest_iso,mz_max_int,delta_mz_to_mz_at_max_int)))
+        }
+
+        updatecounter <- updatecounter + 1
+        if(updatecounter >= 100)
+        {
+          time_elapsed <- difftime(Sys.time(),start_time,units="secs")
+          time_require <- (time_elapsed/(i/max))*(1-(i/max))
+          td <- lubridate::seconds_to_period(time_require)
+          time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
+
+          updatecounter <- 0
+          tcltk::setTkProgressBar(pb, i, label=base::paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
+        }
+      }
+      close(pb)
+      allpeptides <- cbind(allpeptides,add)
+    }
+
+    #check for additional optional columns
+
+    if(!any(colnames(allpeptides) == "MSMS.Scan.Numbers"))
+    {
+      allpeptides$MSMS.Scan.Numbers <- 0
+
+      for(i in unique(allpeptides$Raw.file))
+      {
+        sel <- which(allpeptides$Raw.file == i)
+        allpeptides$MSMS.Scan.Numbers[sel] <- as.character(1:length(sel))
+      }
+
+    }
+
+    if(!any(colnames(allpeptides) == "Uncalibrated.m.z"))
+    {
+      allpeptides$Uncalibrated.m.z <- allpeptides$m.z
+    }
+
+    if(!any(colnames(allpeptides) == "Intensity"))
+    {
+      allpeptides$Intensity <- 1
+    }
+
+    if(!any(colnames(allpeptides) == "Calibrated.retention.time"))
+    {
+      allpeptides$Calibrated.retention.time <- allpeptides$Retention.time
+    }
+
+    allpeptides$Uncalibrated...Calibrated.m.z..Da. <- allpeptides$Uncalibrated.m.z-allpeptides$m.z
+
+    ###finally save prepared feature data
+    setwd(path_to_output)
+    save(allpeptides,file = "Temporary_files/allFeatures.RData")
+
+    ###next prepare available peptide data and id mappings
+    setwd(path_to_folder)
+    peptides <- read.table("preprocess_quant.txt",header = T,sep="\t")
+
+    peptides$Sequence <- as.character(peptides$Sequence)
+    peptides$ID <- as.character(peptides$ID)
+    for(c in which(grepl("Intensity",colnames(peptides))))
+    {
+      peptides[,c] <- as.numeric(peptides[,c])
+    }
+
+    id_mapping <- read.table("id_mapping.txt",header = T,sep="\t")
+    id_mapping$ID <- as.character(id_mapping$ID)
+    id_mapping$Gene_Name <- as.character(id_mapping$Gene_Name)
+
+    ###finally store data
+    setwd(path_to_output)
+    save(id_mapping,file = "Temporary_files/id_mapping.RData")
+    save(peptides,file = "Temporary_files/preprocess_quant.RData")
+  }
+
+  return(list(allpeptides = allpeptides,
+              peptides = peptides,
+              id_mapping = id_mapping))
+
+}
+
+#' Perform alignment of pre-determined MS1-features by MaxQuant over proteomics samples either analyzed on an Orbitrap machine (e.g. Q-Exactive or Orbitrap Fusion) or a TIMS-ToF Pro
+#' @param path_to_input Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)
+#' @param path_to_output Path to folder where IceR results should be stored
+#' @param preprocess_pipeline Preprocessing pipeline. Can be one of the following: MaxQ, User. User indicates that data was rearranged already manually. Defaults to MaxQ.
 #' @param output_file_names_add IceR result name tag. By default IceR_analysis
 #' @param mz_window Numeric value indicating maximal m/z deviation around a center. By default set to NA which indicates that the function determines automatically this parameter based on sd of m/z of identified peptides between samples.
 #' @param min_mz_window Numberic value indicating how large the automatically determined m/z-window should be. By default set to 0.001 Da. Only required if m/z alignment window should be automatically determined. If set to NA, no minimal window size will be required.
@@ -472,12 +1289,13 @@ convert_rawTIMS <- function(path_to_raw=NULL)
 #' @details Performs the first steps of the IceR workflow: 1) Alignment window determination if not specified. 2) Alignment of MaxQuant features into IceR features. 3) Transfer of sequence information between MaxQuant features aligned into IceR features. 4) Extraction, modelling and prediction of RT- and m/z-correction factor per IceR feature and sample.
 #' @return Outputs are stored in the sub-directory Temporary_files within specified output folder. MaxQuant allpeptides.txt and evidence.txt are converted to RData files. QC plots of estimated alignment windows as well as of random forest modesl and generalized additive models are stored in a QC_plots.pdf. Relevant QC data is stored in Feature_alignment_QC_data.RData. Aligned IceR features are stored in Features_aligned_merged.txt
 #' @export
-align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,output_file_names_add="IceR_analysis",mz_window=NA,min_mz_window = 0.001,RT_window=NA,min_RT_window=1,min_num_ions_collapse=10,feature_mass_deviation_collapse=0.002,only_unmodified_peptides=F,sample_list=NA,remove_contaminants=T,MassSpec_mode=c("Orbitrap","TIMSToF"),IM_window=NA,min_IM_window=0.002,multiplicity=c(1,2,3),SILAC_settings=list(light=c(""),medium=c("Lys4","Arg6"),heavy=c("Lys8","Arg10")))
+align_features <- function(path_to_input,path_to_output,preprocess_pipeline="MaxQ",align_unknown=F,output_file_names_add="IceR_analysis",mz_window=NA,min_mz_window = 0.001,RT_window=NA,min_RT_window=1,min_num_ions_collapse=10,feature_mass_deviation_collapse=0.002,only_unmodified_peptides=F,sample_list=NA,remove_contaminants=T,MassSpec_mode=c("Orbitrap","TIMSToF"),IM_window=NA,min_IM_window=0.002,multiplicity=c(1,2,3),SILAC_settings=list(light=c(""),medium=c("Lys4","Arg6"),heavy=c("Lys8","Arg10")))
 {
-  # path_to_MaxQ_output <- "D:\\Publication\\IceR\\test IceR example\\MaxQ"
-  # path_to_output <- "D:\\Publication\\IceR\\test IceR example\\IceR_V1001"
+  # path_to_input <- "Work\\0_General\\R\\IceR\\GIT_issue_7\\MaxQ"
+  # path_to_output <- "Work\\0_General\\R\\IceR\\GIT_issue_7\\IceR"
+  # preprocess_pipeline <- "MaxQ"
   # align_unknown=F
-  # output_file_names_add="IceR_analysis_V1001"
+  # output_file_names_add="IceR_analysis"
   # mz_window=NA
   # min_mz_window = 0.001
   # RT_window=NA
@@ -485,7 +1303,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
   # min_num_ions_collapse=10
   # feature_mass_deviation_collapse=0.002
   # only_unmodified_peptides=F
-  # sample_list=c("20200110_QE1_DDA_1H25_T5_E3_R1","20200110_QE1_DDA_1H25_T5_E3_R2","20200110_QE1_DDA_1H25_T5_E9_R1","20200110_QE1_DDA_1H25_T5_E9_R2")
+  # sample_list=c("20210829_QC02_HEK_01","20210830_QC02_HEK_01")
   # remove_contaminants=T
   # MassSpec_mode="Orbitrap"
   # IM_window=NA
@@ -552,10 +1370,13 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     options(warn=-1)
   }else
   {
-    if(file.exists("Temporary_files/allPeptides.RData"))
+    if(file.exists("Temporary_files/allFeatures.RData") &
+       file.exists("Temporary_files/preprocess_quant.RData") &
+       file.exists("Temporary_files/id_mapping.RData"))
     {
-      load("Temporary_files/allPeptides.RData")
-      load("Temporary_files/evidence.RData")
+      load("Temporary_files/allFeatures.RData")
+      load("Temporary_files/preprocess_quant.RData")
+      load("Temporary_files/id_mapping.RData")
 
       if(is.null(sample_list))
       {
@@ -579,490 +1400,22 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
         {
           missing <- which(all_samples_in_MaxQ %not in% sample_list)
           options(warn=1)
-          warning(paste0(paste(all_samples_in_MaxQ[missing],collapse = ",")," is/are available in MaxQuant results but not specified to be requantified by IceR. This/these samples will be skipt by IceR."))
+          warning(paste0(paste(all_samples_in_MaxQ[missing],collapse = ",")," is/are available in MaxQuant results but not specified to be requantified by IceR. This/these samples will be used for alignment but will not be requantified."))
           options(warn=-1)
         }
       }
 
     }else
     {
-      setwd(path_to_MaxQ_output)
-      options(fftempdir = path_to_MaxQ_output)
-      print("Read MaxQ results")
-      temp <- utils::read.csv(file = "allPeptides.txt",sep='\t',nrows = 2044,header=T)
-      tempclasses = sapply(temp, class)
-      if(MassSpec_mode == "Orbitrap")
-      {
-        if(multiplicity == 1)
-        {
-          tempclasses["Intensity"] = "numeric"
-          tempclasses[which(tempclasses == "logical" | tempclasses == "character")] <- "factor"
-        }else
-        {
-          tempclasses["Intensity"] = "numeric"
-          tempclasses["Intensity.L"] = "numeric"
-          if(multiplicity == 3)tempclasses["Intensity.M"] = "numeric"
-          tempclasses["Intensity.H"] = "numeric"
-          tempclasses["Score"] = "numeric"
-          if(any(names(tempclasses) == "PEP"))tempclasses["PEP"] = "factor"
-          if(any(colnames(temp) == "Retention.Length..FWHM.")) tempclasses["Retention.Length..FWHM."] = "numeric"
-          if(any(colnames(temp) == "Retention.length..FWHM.")) tempclasses["Retention.length..FWHM."] = "numeric"
-          tempclasses[which(tempclasses == "logical" | tempclasses == "character")] <- "factor"
-        }
-
-      }else
-      {
-        if(multiplicity == 1)
-        {
-          tempclasses["m.z"] = "numeric"
-          tempclasses["Mass"] = "numeric"
-          tempclasses["Retention.time" ] = "numeric"
-          tempclasses["Retention.length"] = "numeric"
-          tempclasses["Ion.mobility.index"] = "numeric"
-          tempclasses["Ion.mobility.index.length"] = "numeric"
-          tempclasses[which(tempclasses == "logical" | tempclasses == "character")] <- "factor"
-        }
-      }
-      allpeptides_save <- ff::read.csv.ffdf(file = "allPeptides.txt",sep='\t',VERBOSE = F,colClasses=tempclasses,next.rows = 100000)##read in data in chunks of 100000 rows
-
-      allpeptides <- base::as.data.frame(allpeptides_save)
-      allpeptides <- allpeptides[order(allpeptides$Mass),]
-
-      if(multiplicity > 1)allpeptides <- allpeptides[which(allpeptides$Type != "ISO"),] ###remove ISO features as they are not adding anything at the moment
-
-      #allpeptidessave <- allpeptides
-      ###free some memory
-      rm(allpeptides_save)
-      gc()
-
-      if(!is.null(sample_list))
-      {
-        #check if all Raw.files are in sample_list and that all samples in sample_list are in Raw.file
-        all_samples_in_MaxQ <- sort(unique(allpeptides$Raw.file))
-
-        #Any samples specified for IceR but not available in MaxQ data?
-        if(any(sample_list %not in% all_samples_in_MaxQ))
-        {
-          missing <- which(sample_list %not in% all_samples_in_MaxQ)
-          options(warn=1)
-          warning(paste0(paste(sample_list[missing],collapse = ",")," is/are specified to be requantified by IceR but missing in MaxQuant results. This/these samples will be skipt by IceR."))
-          options(warn=-1)
-        }
-
-        #Any samples available in MaxQ but not specified for IceR?
-        if(any(all_samples_in_MaxQ %not in% sample_list))
-        {
-          missing <- which(all_samples_in_MaxQ %not in% sample_list)
-          options(warn=1)
-          warning(paste0(paste(all_samples_in_MaxQ[missing],collapse = ",")," is/are available in MaxQuant results but not specified to be requantified by IceR. This/these samples will be skipt by IceR."))
-          options(warn=-1)
-        }
-      }
-
-      ##unify column names
-      #RT
-      if(length(which(colnames(allpeptides) == "Retention.Length"))==0) ###possibly upper and lower case problem
-      {
-        if(length(which(colnames(allpeptides) == "Retention.length"))>0) ###possibly upper and lower case problem
-        {
-          colnames(allpeptides)[which(colnames(allpeptides) == "Retention.length")] <- "Retention.Length"
-        }else
-        {
-          allpeptides$Retention.Length = 0
-        }
-      }
-
-      if(MassSpec_mode == "Orbitrap")allpeptides$Retention.Length <- allpeptides$Retention.Length/60 ##in Orbitrap allpeptides.txt the retention length is given in sec instead of min like in e.g. evidence.txt
-
-      #MSMS scan numbers
-      if(length(which(colnames(allpeptides) == "MSMS.Scan.Numbers"))==0)
-      {
-        if(length(which(colnames(allpeptides) == "MS.MS.scan.number"))>0)
-        {
-          colnames(allpeptides)[which(colnames(allpeptides) == "MS.MS.scan.number")] <- "MSMS.Scan.Numbers"
-        }else
-        {
-          allpeptides$MSMS.Scan.Numbers = 0
-        }
-      }
-
-      ###Some peptides are not available in allpeptides.txt thus we get this additional information from the evidence.txt file
-      evidence <- utils::read.csv(file = "evidence.txt",sep='\t',header=T)
-      if(any(colnames(evidence) == "MS.MS.Scan.Number"))colnames(evidence)[which(colnames(evidence) == "MS.MS.Scan.Number")] <- "MSMS.Scan.Numbers"
-      if(any(colnames(evidence) == "MS.MS.scan.number"))colnames(evidence)[which(colnames(evidence) == "MS.MS.scan.number")] <- "MSMS.Scan.Numbers"
-      if(any(colnames(evidence) == "MSMS.Scan.Numbers"))colnames(evidence)[which(colnames(evidence) == "MSMS.Scan.Numbers")] <- "MSMS.Scan.Numbers"
-      if(any(colnames(evidence) == "Retention.length"))colnames(evidence)[which(colnames(evidence) == "Retention.length")] <- "Retention.Length"
-      if(any(colnames(evidence) == "Ion.mobility.length"))colnames(evidence)[which(colnames(evidence) == "Ion.mobility.length")] <- "Ion.mobility.index.length"
-      if(any(colnames(evidence) == "Number.of.scans"))colnames(evidence)[which(colnames(evidence) == "Number.of.scans")] <- "Number.of.frames"
-
-      #load msms info in case of SILAC data
-      if(multiplicity > 1)
-      {
-        temp <- utils::read.csv(file = "msms.txt",sep='\t',nrows = 2044,header=T)
-        tempclasses = sapply(temp, class)
-        tempclasses[which(tempclasses != "factor")] <- "factor"
-        msms_save <- ff::read.csv.ffdf(file = "msms.txt",sep='\t',VERBOSE = F,colClasses=tempclasses,next.rows = 100000)##read in data in chunks of 100000 rows
-        msms <- base::as.data.frame(msms_save)
-
-        if(length(which(colnames(msms) == "Labeling.state"))==0) ###possibly upper and lower case problem
-        {
-          colnames(msms)[which(colnames(msms) == "Labeling.State")] <- "Labeling.state"
-        }
-
-        #match msms to evidence table
-        match_order <- match(evidence$Best.MS.MS,msms$id)
-
-        #add labeling state info from msms to evidence table
-        evidence$Labeling.State <- as.numeric(as.character(msms$Labeling.state))[match_order]
-      }
-
-
-      print("Read MaxQ results finished")
-
-      if(MassSpec_mode == "Orbitrap")
-      {
-        #in case of SILAC only use true identification per SILAC state as given (intensities could be requantified by MaxQ if setting enabled)
-        if(multiplicity > 1)
-        {
-          #remove unclear labeling states
-          sel <- which(is.na(evidence$Labeling.State) | evidence$Labeling.State == -1)
-          if(length(sel) > 0)evidence <- evidence[-sel,]
-
-          #remove intensities of silac channels which were not directly identified
-          evidence$Intensity.H[which(evidence$Labeling.State == 0)] <- NA
-          evidence$Intensity.M[which(evidence$Labeling.State == 0)] <- NA
-          evidence$Intensity.H[which(evidence$Labeling.State == 1)] <- NA
-          evidence$Intensity.L[which(evidence$Labeling.State == 1)] <- NA
-          evidence$Intensity.L[which(evidence$Labeling.State == 2)] <- NA
-          evidence$Intensity.M[which(evidence$Labeling.State == 2)] <- NA
-        }
-
-        add_data <- base::as.data.frame(matrix(ncol=ncol(allpeptides),nrow=nrow(evidence),NA))
-        colnames(add_data) <- colnames(allpeptides)
-        match_col_names <- match(colnames(allpeptides),colnames(evidence))
-        data.table::set(add_data,j=as.integer(which(!is.na(match_col_names))),value = evidence[,match_col_names[which(!is.na(match_col_names))]])
-
-        ####now find rows (peptides + modification + sample) which are not yet present in allpeptides.txt
-        temp1 <- base::paste(add_data$Sequence,add_data$Modifications,add_data$Raw.file,sep="_")
-        temp2 <- base::paste(allpeptides$Sequence,allpeptides$Modifications,allpeptides$Raw.file,sep="_")
-        add_data <- add_data[which(temp1 %not in% temp2),]
-        allpeptides <- rbind(allpeptides,add_data)
-        rm(temp1,temp2,add_data)
-        gc()
-      }
-
-      if(MassSpec_mode == "TIMSToF")
-      {
-        add_data <- base::as.data.frame(matrix(ncol=ncol(allpeptides),nrow=nrow(evidence),NA))
-        colnames(add_data) <- colnames(allpeptides)
-        match_col_names <- match(colnames(allpeptides),colnames(evidence))
-        data.table::set(add_data,j=as.integer(which(!is.na(match_col_names))),value = evidence[,match_col_names[which(!is.na(match_col_names))]])
-
-        ###in TIMS allpeptides.txt column sequence and modification is missing thus take evidence table completeley
-        add_data$Sequence <- evidence$Sequence
-        add_data$Modifications <- evidence$Modifications
-        add_data$Proteins <- evidence$Proteins
-        add_data$Score <- evidence$Score
-
-        allpeptides$Sequence <- ""
-        allpeptides$Modifications <- ""
-        allpeptides$Proteins <- ""
-        allpeptides$Score <- NA
-        allpeptides$Score <- as.numeric(allpeptides$Score)
-
-        allpeptides <- rbind(allpeptides,add_data)
-        rm(add_data)
-        gc()
-
-        ###convert Ion.mobility.index into 1/K0
-        fit <- stats::lm(evidence$X1.K0~evidence$Ion.mobility.index)
-        allpeptides$inverse_K0 <- (allpeptides$Ion.mobility.index*fit$coefficients[2])+fit$coefficients[1]
-        allpeptides$inverse_K0_length <- allpeptides$Ion.mobility.index.length/1000
-
-      }
-
-      #if in SILAC mode, treat each channel as individual sample
-      if(multiplicity > 1)
-      {
-        temp_allpeptides <- base::as.data.frame(matrix(ncol=ncol(allpeptides)+4,nrow=0))
-        colnames(temp_allpeptides) <- c(colnames(allpeptides),"m.z_SILAC","m.z_SILAC_uncalibrated","Lys_count","Arg_count")
-
-        #change intensities set to 0 to NA
-        allpeptides$Intensity.L[allpeptides$Intensity.L == 0] <- NA
-        allpeptides$Intensity.M[allpeptides$Intensity.M == 0] <- NA
-        allpeptides$Intensity.H[allpeptides$Intensity.H == 0] <- NA
-
-        #Now expand every evidence row to an individual row per SILAC state where intensity != NA
-        for(s in unique(allpeptides$Raw.file))
-        {
-          for(label in names(SILAC_settings))
-          {
-            if(label == "light")sel <- which(allpeptides$Raw.file == s & !is.na(allpeptides$Intensity.L))
-            if(label == "medium")sel <- which(allpeptides$Raw.file == s & !is.na(allpeptides$Intensity.M))
-            if(label == "heavy")sel <- which(allpeptides$Raw.file == s & !is.na(allpeptides$Intensity.H))
-
-            #set intensity column to observed intensity in respective channel
-            temp <- allpeptides[sel,]
-            if(label == "light")temp$Intensity <- temp$Intensity.L
-            if(label == "medium")temp$Intensity <- temp$Intensity.M
-            if(label == "heavy")temp$Intensity <- temp$Intensity.H
-
-            #set observed m/z at max intensity
-            if(label == "light")temp$Max.intensity.m.z.0 <- temp$Max.intensity.m.z.0
-            if(label == "medium")temp$Max.intensity.m.z.0 <- temp$Max.intensity.m.z.1
-            if(label == "heavy")temp$Max.intensity.m.z.0 <- temp$Max.intensity.m.z.2
-
-            #get number of Lys and Arg per feature
-            count_AA_K <- ifelse(temp$Sequence != " ",stringr::str_count(temp$Sequence, "K"),NA)
-            count_AA_R <- ifelse(temp$Sequence != " ",stringr::str_count(temp$Sequence, "R"),NA)
-            if(any(colnames(temp) == "Lys.Count"))
-            {
-              temp$Lys_count <- ifelse(!is.na(temp$Lys.Count),temp$Lys.Count,count_AA_K)
-            }else
-            {
-              temp$Lys_count <- count_AA_K
-            }
-            if(any(colnames(temp) == "Arg.Count"))
-            {
-              temp$Arg_count <- ifelse(!is.na(temp$Arg.Count),temp$Arg.Count,count_AA_R)
-            }else
-            {
-              temp$Arg_count <- count_AA_R
-            }
-
-            #check if m/z shifts come from only Lys, only Arg or both
-            #if only coming from Lys then only keep features for which Lys count is known
-            #if only coming from Arg then only keep features for which Arg count is known
-            #in case of both, require Lys and Arg count to be known
-            #further filter for features with at least one of each required AA otherwise L, M and H channels can not be distinguished
-            if(require_lys == T & require_arg == T)
-            {
-              temp <- temp[which(!is.na(temp$Lys_count) & temp$Lys_count > 0 | !is.na(temp$Arg_count) & temp$Arg_count > 0),]
-            }else if(require_lys == T)
-            {
-              temp <- temp[which(!is.na(temp$Lys_count) & temp$Lys_count > 0),]
-            }else if(require_arg == T)
-            {
-              temp <- temp[which(!is.na(temp$Arg_count) & temp$Arg_count > 0),]
-            }
-            temp$Lys_count[is.na(temp$Lys_count)] <- 0
-            temp$Arg_count[is.na(temp$Arg_count)] <- 0
-
-            #adjust m/z to m/z including expected mass shift
-            temp$m.z_SILAC <- temp$m.z + ((SILAC_settings[[label]]$mass_shift_Lys*temp$Lys_count)/temp$Charge) + ((SILAC_settings[[label]]$mass_shift_Arg*temp$Arg_count)/temp$Charge)
-            temp$m.z_SILAC_uncalibrated <- temp$Uncalibrated.m.z + + ((SILAC_settings[[label]]$mass_shift_Lys*temp$Lys_count)/temp$Charge) + ((SILAC_settings[[label]]$mass_shift_Arg*temp$Arg_count)/temp$Charge)
-
-            #adjust raw file name
-            temp$Raw.file <- base::paste(s,"_Channel_",label,sep="")
-
-            temp_allpeptides <- rbind(temp_allpeptides,temp)
-          }
-        }
-
-        allpeptides <- temp_allpeptides
-      }
-
-      ###if no specific sample list is defined which should be used, use all raw files
-      if(is.null(sample_list))
-      {
-        sample_list <- sort(unique(allpeptides$Raw.file))
-      }
-
-      ###clean allpeptides table to reduce required memory space
-      if(MassSpec_mode == "Orbitrap")
-      {
-        if(multiplicity == 1)
-        {
-          if(any(colnames(allpeptides) == "Resolution"))
-          {
-            allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","Mass","Uncalibrated.m.z","Resolution","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity")]
-          }else
-          {
-            allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","Mass","Uncalibrated.m.z","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity")]
-            allpeptides$Resolution <- 0
-            print("MS resolution seems to be missing in MaxQ outputs !!!")
-          }
-        }else if(multiplicity > 1)
-        {
-          if(any(colnames(allpeptides) == "Resolution"))
-          {
-            allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","m.z_SILAC","Mass","Uncalibrated.m.z","m.z_SILAC_uncalibrated","Resolution","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity","Lys_count","Arg_count")]
-          }else
-          {
-            allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","m.z_SILAC","Mass","Uncalibrated.m.z","m.z_SILAC_uncalibrated","Max.intensity.m.z.0","Retention.time","Retention.Length","MS.MS.IDs","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity","Lys_count","Arg_count")]
-            allpeptides$Resolution <- 0
-            print("MS resolution seems to be missing in MaxQ outputs !!!")
-          }
-
-        }
-
-      }
-      if(MassSpec_mode == "TIMSToF")
-      {
-        allpeptides <- allpeptides[,c("Raw.file","Charge","m.z","Mass","Retention.time","Retention.Length","Sequence","Modifications","Proteins","Score","MSMS.Scan.Numbers","Intensity","inverse_K0","inverse_K0_length")]
-        allpeptides$Resolution <- 0 ###no resolution information available
-      }
-
-      if(remove_contaminants == T)exclude <- which(grepl("CON",allpeptides$Proteins) | grepl("REV",allpeptides$Proteins))
-      if(remove_contaminants == F)exclude <- which(grepl("REV",allpeptides$Proteins))
-      if(length(exclude) > 0)allpeptides <- allpeptides[-exclude,] ###remove potential reverse and contaminant peptides
-
-
-      ###add calibrated RT to all peptides
-      if(multiplicity == 1)
-      {
-        temp_evidence <- evidence[,c("Sequence","Raw.file","Charge","Modifications","Calibrated.retention.time")]
-        temp_evidence <- stats::aggregate(temp_evidence$Calibrated.retention.time,list(Sequence=evidence$Sequence,Raw.file=evidence$Raw.file,Charge=evidence$Charge,Modifications=evidence$Modifications),FUN=mean,na.rm=T)
-        colnames(temp_evidence)[5] <- "Calibrated.retention.time"
-        temp <- dplyr::left_join(allpeptides,temp_evidence,by=c("Sequence"="Sequence","Raw.file"="Raw.file","Charge"="Charge","Modifications"="Modifications"))
-
-        missing_RT_calibration_indices <- which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")
-        if(length(missing_RT_calibration_indices)>0)
-        {
-          for(ind in missing_RT_calibration_indices)
-          {
-            sub <- temp[which(temp$Sequence == temp$Sequence[ind] & temp$Modifications == temp$Modifications[ind]),]
-            temp$Calibrated.retention.time[ind] <- stats::median(sub$Calibrated.retention.time,na.rm=T)
-          }
-        }
-
-        ###if any peptide feature still doesn?t have a valid calibrated RT --> just use observed RT
-        temp$Calibrated.retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")] <- temp$Retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")]
-        allpeptides <- temp
-      }else if(multiplicity > 1)
-      {
-        temp_evidence <- evidence[,c("Sequence","Raw.file","Charge","Modifications","Calibrated.retention.time")]
-        temp_evidence <- stats::aggregate(temp_evidence$Calibrated.retention.time,list(Sequence=evidence$Sequence,Raw.file=evidence$Raw.file,Charge=evidence$Charge,Modifications=evidence$Modifications),FUN=mean,na.rm=T)
-        colnames(temp_evidence)[5] <- "Calibrated.retention.time"
-        allpeptides$Raw.file_orig <- base::gsub("_Channel_light|_Channel_medium|_Channel_heavy","",allpeptides$Raw.file)
-        temp <- dplyr::left_join(allpeptides,temp_evidence,by=c("Sequence"="Sequence","Raw.file_orig"="Raw.file","Charge"="Charge","Modifications"="Modifications"))
-
-        missing_RT_calibration_indices <- which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")
-        if(length(missing_RT_calibration_indices)>0)
-        {
-          for(ind in missing_RT_calibration_indices)
-          {
-            sub <- temp[which(temp$Sequence == temp$Sequence[ind] & temp$Modifications == temp$Modifications[ind]),]
-            temp$Calibrated.retention.time[ind] <- stats::median(sub$Calibrated.retention.time,na.rm=T)
-          }
-        }
-
-        ###if any peptide feature still doesn?t have a valid calibrated RT --> just use observed RT
-        temp$Calibrated.retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")] <- temp$Retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")]
-        allpeptides <- temp
-      }
-
-      #determine isotope corrected m/z
-      if(MassSpec_mode == "Orbitrap" & multiplicity == 1)
-      {
-        ###calculate deviations between samples
-        add <- base::as.data.frame(matrix(nrow=nrow(allpeptides),ncol=3))
-        colnames(add) <- c("isotope_at_max_int","isotope_corrected_mz_at_max_int","delta_mz_to_mz_at_max_int")
-        add[,1] <- as.numeric(add[,1])
-        add[,2] <- as.numeric(add[,2])
-        add[,3] <- as.numeric(add[,3])
-
-        isotopes <- matrix(nrow=nrow(allpeptides),ncol=4)
-        isotopes[,1] <- allpeptides$m.z
-        isotopes[,2] <- ((allpeptides$m.z*allpeptides$Charge)+(1*1.002054))/allpeptides$Charge
-        isotopes[,3] <- ((allpeptides$m.z*allpeptides$Charge)+(2*1.002054))/allpeptides$Charge
-        isotopes[,4] <- ((allpeptides$m.z*allpeptides$Charge)+(3*1.002054))/allpeptides$Charge
-
-        max <- nrow(allpeptides)
-        pb <- tcltk::tkProgressBar(title = "Determine deviations of true m/z from observed m/z",label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
-        start_time <- Sys.time()
-        updatecounter <- 0
-        time_require <- 0
-        for(i in 1:nrow(allpeptides))
-        {
-          if(!is.na(allpeptides$Max.intensity.m.z.0[i]))
-          {
-            mz_max_int <- allpeptides$Max.intensity.m.z.0[i]
-            deltas <- abs(isotopes[i,] - mz_max_int)
-            closest_iso <- which(deltas == min(deltas,na.rm=T))-1
-            if(closest_iso > 0) ###+1 or +2 or +3 isotope shows highest intensity
-            { ##correct back to isotope +0 m/z
-              iso_mult <- closest_iso*1.002054
-              mz_max_int <- ((mz_max_int*allpeptides$Charge[i])-(iso_mult))/allpeptides$Charge[i]
-            }
-            delta_mz_to_mz_at_max_int <- mz_max_int - allpeptides$m.z[i]
-            data.table::set(add,as.integer(i),as.integer(1:3),value=as.list(c(closest_iso,mz_max_int,delta_mz_to_mz_at_max_int)))
-          }
-
-          updatecounter <- updatecounter + 1
-          if(updatecounter >= 100)
-          {
-            time_elapsed <- difftime(Sys.time(),start_time,units="secs")
-            time_require <- (time_elapsed/(i/max))*(1-(i/max))
-            td <- lubridate::seconds_to_period(time_require)
-            time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
-
-            updatecounter <- 0
-            tcltk::setTkProgressBar(pb, i, label=base::paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
-          }
-        }
-        close(pb)
-
-        allpeptides <- cbind(allpeptides,add)
-
-        ###evidence table
-
-        add <- base::as.data.frame(matrix(nrow=nrow(evidence),ncol=3))
-        colnames(add) <- c("isotope_at_max_int","isotope_corrected_mz_at_max_int","delta_mz_to_mz_at_max_int")
-        add[,1] <- as.numeric(add[,1])
-        add[,2] <- as.numeric(add[,2])
-        add[,3] <- as.numeric(add[,3])
-
-        isotopes <- matrix(nrow=nrow(evidence),ncol=4)
-        isotopes[,1] <- evidence$m.z
-        isotopes[,2] <- ((evidence$m.z*evidence$Charge)+(1*1.002054))/evidence$Charge
-        isotopes[,3] <- ((evidence$m.z*evidence$Charge)+(2*1.002054))/evidence$Charge
-        isotopes[,4] <- ((evidence$m.z*evidence$Charge)+(3*1.002054))/evidence$Charge
-
-        max <- nrow(evidence)
-        pb <- tcltk::tkProgressBar(title = "Determine deviations of true m/z from observed m/z",label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
-        start_time <- Sys.time()
-        updatecounter <- 0
-        time_require <- 0
-
-        for(i in 1:nrow(evidence))
-        {
-          if(!is.na(evidence$Max.intensity.m.z.0[i]))
-          {
-            mz_max_int <- evidence$Max.intensity.m.z.0[i]
-            deltas <- abs(isotopes[i,] - mz_max_int)
-            closest_iso <- which(deltas == min(deltas,na.rm=T))-1
-            if(closest_iso > 0) ###+1 or +2 or +3 isotope shows highest intensity
-            { ##correct back to isotope +0 m/z
-              iso_mult <- closest_iso*1.002054
-              mz_max_int <- ((mz_max_int*evidence$Charge[i])-(iso_mult))/evidence$Charge[i]
-            }
-            delta_mz_to_mz_at_max_int <- mz_max_int - evidence$m.z[i]
-            data.table::set(add,as.integer(i),as.integer(1:3),value=as.list(c(closest_iso,mz_max_int,delta_mz_to_mz_at_max_int)))
-          }
-
-          updatecounter <- updatecounter + 1
-          if(updatecounter >= 100)
-          {
-            time_elapsed <- difftime(Sys.time(),start_time,units="secs")
-            time_require <- (time_elapsed/(i/max))*(1-(i/max))
-            td <- lubridate::seconds_to_period(time_require)
-            time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
-
-            updatecounter <- 0
-            tcltk::setTkProgressBar(pb, i, label=base::paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
-          }
-        }
-        close(pb)
-
-        evidence <- cbind(evidence,add)
-      }
-
-      ###finally save prepared data
-      setwd(path_to_output)
-
-      save(allpeptides,file = "Temporary_files/allPeptides.RData")
-      save(evidence,file = "Temporary_files/evidence.RData")
+      res <- prepare_preprocessed_data(path_to_folder = path_to_input,
+                                       path_to_output = path_to_output,
+                                       pipeline = preprocess_pipeline,
+                                       sample_list,
+                                       MassSpec_mode,
+                                       multiplicity,
+                                       SILAC_settings,
+                                       remove_contaminants)
+      allpeptides <- res$allpeptides
     }
 
     QC_data <- list() ##here relevant qc data is stored and finally saved as RData which can be used for re-generating plots
@@ -1080,7 +1433,13 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       IM_calibration <- F
     }
 
-    if(MassSpec_mode == "Orbitrap")QC_data[["MaxQ_calibrations"]] <- evidence[,c("Retention.time.calibration","Uncalibrated...Calibrated.m.z..Da.")]
+    if(MassSpec_mode == "Orbitrap")
+    {
+      temp <- allpeptides[which(allpeptides$Sequence != " "),c("Retention.time","Calibrated.retention.time","Uncalibrated...Calibrated.m.z..Da.")]
+      temp$Retention.time.calibration <- temp$Calibrated.retention.time - temp$Retention.time
+      QC_data[["preprocess_calibrations"]] <- temp[,c("Retention.time.calibration","Uncalibrated...Calibrated.m.z..Da.")]
+      rm(temp)
+    }
 
     allpeptides <- allpeptides[order(allpeptides$m.z),]
     rownames(allpeptides) <- c(1:nrow(allpeptides))
@@ -1570,7 +1929,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
             sub <- sub_peptide[which(sub_peptide$Charge == c & sub_peptide$Modifications == m),]
             if(nrow(sub) > 0)
             {
-              sub <- sub[order(sub$Intensity,decreasing = T),]
+              sub <- sub[base::order(sub$Intensity,decreasing = T),]
 
               ###only use features close to median feature over all samples for this peptide
               median_m.z <- stats::median(sub$m.z,na.rm=T)##
@@ -1600,9 +1959,14 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
                 if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]))
                 {
-                  end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
                   start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]
 
+                  end_indices_temp <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
+                  if (is.na(end_indices_temp)) {
+                    end_indices <- na.omit(allpeptides_frag_indices_per_mz_window[[c]][(end_indices+1):nrow(allpeptides_frag_indices_per_mz_window[[c]]),3])[1]
+                  }else {
+                    end_indices <- end_indices_temp
+                  }
                 }else if(!is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]))
                 {
                   end_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,4]
@@ -1862,9 +2226,13 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
                 if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]))
                 {
-                  end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
                   start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]
-
+                  end_indices_temp <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
+                  if (is.na(end_indices_temp)) {
+                    end_indices <- na.omit(allpeptides_frag_indices_per_mz_window[[c]][(end_indices+1):nrow(allpeptides_frag_indices_per_mz_window[[c]]),3])[1]
+                  }else {
+                    end_indices <- end_indices_temp
+                  }
                 }else if(!is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]))
                 {
                   end_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,4]
@@ -2064,6 +2432,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
     if(MassSpec_mode == "Orbitrap")save(temp_data,features,allpeptides,borders_m.z,borders_RT,windows,file=base::paste("Temporary_files/features_aligned_step_1",output_file_names_add,".RData",sep=""))
     if(MassSpec_mode == "TIMSToF")save(temp_data,features,allpeptides,borders_m.z,borders_RT,borders_IM,windows,file=base::paste("Temporary_files/features_aligned_step_1",output_file_names_add,".RData",sep=""))
+
     #####Perform alignment of undefined features
 
     # if(align_unknown == T)
@@ -2620,6 +2989,9 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
       pep_seq <- stringr::str_split(features$Sequence,";",simplify = T)
 
+      #prepare evidence table (features with identified sequence)
+      evidence <- allpeptides[which(allpeptides$Sequence != " "),]
+
       if(multiplicity == 1)evidence <- evidence[which(evidence$Raw.file %in% sample_list),]
       if(multiplicity > 1)
       {
@@ -2771,6 +3143,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
         {
           temp_data <- evidence[which(rowSums(is.na(evidence[,c("Raw.file","Retention.time","m.z","Charge","Uncalibrated...Calibrated.m.z..Da.")])) == 0),c("Raw.file","Retention.time","m.z","Charge","Uncalibrated...Calibrated.m.z..Da.")]
           temp_data$Resolution <- 0
+          allpeptides$Resolution <- 0
         }
 
         #replicate rows in case of multiplicity > 1
@@ -3064,7 +3437,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
         {
           x <- features$RT[which(RT_calibration_vals[,c] != 0)]
           y <- RT_calibration_vals[,c][which(RT_calibration_vals[,c] != 0)]
-          if(length(x) > 10) ###require at least 500 data points to perform fitting
+          if(length(x) > 10) ###require at least 10 data points to perform fitting
           {
             ##try to fit an average generalised additive model to determine a RT dependent calibration curve
             gam <- mgcv::gam(y ~ s(x), method = "REML")
@@ -3832,7 +4205,7 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
 #' Perform quantification of IceR features
 #' @param path_to_features Path to folder where results of align_features() are stored
 #' @param path_to_mzXML Path to folder containing mzXML files of samples in case of Orbitrap data.
-#' @param path_to_MaxQ_output Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)
+#' @param path_to_input Path to folder containing MaxQuant outputs (txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)
 #' @param feature_table_file_name File name which contains align_features() results. By default is set to Features_aligned_merged_IceR_analysis.txt.
 #' @param output_file_names_add IceR result name tag. By default IceR_analysis
 #' @param RT_calibration Boolean value indicating if corrected RT should be used during peak detection, selection and DICE, By default set to T.
@@ -3879,13 +4252,13 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
 #' The performance of RT- and m/z-alignments over samples is visualized in "Performance of feature alignment.pdf"
 #' Estimation of required peptide abundance correction factors is visualized in "Correct feature abundance estimations Signal_Background_intensity.pdf".
 #' Intermediate results of the function are stored in RData files.
-requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_output,feature_table_file_name="Features_aligned_merged_IceR_analysis.txt",output_file_names_add="IceR_analysis",RT_calibration=T,mz_calibration=T,abundance_estimation_correction = T,Quant_pVal_cut=0.05,n_cores=2,kde_resolution = 50,num_peaks_store = 5,plot_peak_detection=F,alignment_variability_score_cutoff=0.05,alignment_scores_cutoff=0.05,mono_iso_alignment_cutoff=0.05,calc_peptide_LFQ=F,calc_protein_LFQ=T,MassSpec_mode=c("Orbitrap","TIMSToF"),use_IM_data = T,path_to_extracted_spectra=NA)
+requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,feature_table_file_name="Features_aligned_merged_IceR_analysis.txt",output_file_names_add="IceR_analysis",RT_calibration=T,mz_calibration=T,abundance_estimation_correction = T,Quant_pVal_cut=0.05,n_cores=2,kde_resolution = 50,num_peaks_store = 5,plot_peak_detection=F,alignment_variability_score_cutoff=0.05,alignment_scores_cutoff=0.05,mono_iso_alignment_cutoff=0.05,calc_peptide_LFQ=F,calc_protein_LFQ=T,MassSpec_mode=c("Orbitrap","TIMSToF"),use_IM_data = T,path_to_extracted_spectra=NA)
 {
-  # path_to_features <- "D:\\Publication\\IceR\\test IceR example\\IceR_V1001"
-  # path_to_mzXML <- "D:\\Publication\\IceR\\test IceR example\\raw\\mzXML"
-  # path_to_MaxQ_output <- "D:\\Publication\\IceR\\test IceR example\\MaxQ"
-  # feature_table_file_name="Features_aligned_merged_IceR_analysis_V1001.txt"
-  # output_file_names_add="IceR_analysis_V1001"
+  # path_to_features <- "Work\\0_General\\R\\IceR\\Example\\IceR"
+  # path_to_mzXML <- "Work\\0_General\\R\\IceR\\Example\\raw\\mzXML"
+  # path_to_input <- "Work\\0_General\\R\\IceR\\Example\\MaxQ"
+  # feature_table_file_name="Features_aligned_merged_IceR_analysis.txt"
+  # output_file_names_add="IceR_analysis"
   # RT_calibration=T
   # mz_calibration=T
   # abundance_estimation_correction = T
@@ -5652,7 +6025,15 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   graphics::smoothScatter(RT_all,x_all,ylab="Intensity, log2",main="All samples - Decoy feature mean intensity",xlab="RT [min]")
 
   ##try to fit an average generalised additive model to determine a RT dependent mean intensity and sd of intensity
-  fit_gam_mean <- mgcv::gam(x_all ~ s(RT_all), method = "REML")
+
+  if (length(which(!is.na(unique(x_all)))) > 10) {
+    fit_gam_mean <- mgcv::gam(x_all ~ s(RT_all), method = "REML")
+  } else {
+    warning("Too few decoy ion intensities available. Subsequent statistical evaluations might be wrong.")
+    x_all <- rnorm(length(RT_all),mean = 1,sd = 0.1)
+    fit_gam_mean <- mgcv::gam(x_all ~ s(RT_all), method = "REML")
+  }
+
   x_pred <- seq(min(features_select$RT,na.rm=T), max(features_select$RT,na.rm=T), length.out = nrow(features_select))
   y_pred <- stats::predict(fit_gam_mean, base::data.frame(RT_all = x_pred))
   graphics::lines(x_pred,y_pred,col="red")
@@ -5669,9 +6050,16 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     ##try to fit an average generalised additive model to determine a RT dependent mean intensity and sd of intensity
     ##if not enough data points available, use the average gam
     gam <- tryCatch({mgcv::gam(x ~ s(RT), method = "REML")}, error = function(error_condition) {
+      #error for current sample. Use data from total data set instead
       RT <- rep(as.numeric(features_select$RT),ncol(decoy_mean_intensity))
       x <- as.numeric(as.matrix(decoy_mean_intensity))
-      mgcv::gam(x ~ s(RT), method = "REML")
+      if (length(which(!is.na(unique(x)))) > 10) {
+        return(mgcv::gam(x ~ s(RT), method = "REML"))
+      } else {
+        warning("Too few decoy ion intensities available. Subsequent statistical evaluations might be wrong.")
+        x <- rnorm(length(RT),mean = 1,sd = 0.1)
+        return(mgcv::gam(x ~ s(RT), method = "REML"))
+      }
     })
     x_pred <- seq(min(features_select$RT,na.rm=T), max(features_select$RT,na.rm=T), length.out = nrow(features_select))
     y_pred <- stats::predict(gam, base::data.frame(RT = x_pred))
@@ -6079,6 +6467,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
         res <- foreach::foreach(s=1:length(samples)) %dopar%
           {
+            #library(data.table) #needs to be in here if this code is run manually
             peak_decision(features_select = features_temp,
                           peak_quant = peak_quant_temp,
                           samples,
@@ -6134,7 +6523,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
          peak_quant,
          QC_data,
          path_to_features,
-         path_to_MaxQ_output,
+         path_to_input,
          samples,
          delta_rt,
          delta_mz,
@@ -6916,8 +7305,15 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   temp_mean_aligned <- temp_mean_aligned[-sel,]
   temp_sd_aligned <- temp_sd_aligned[-sel,]
   grDevices::pdf("Performance of feature alignment.pdf",useDingbats = F)
-  graphics::boxplot(temp_sd_raw$RT,temp_sd_aligned$RT_correct,outline=F,main="Variability of feature RT",names = c("Raw","Aligned"),ylab="SD of RT [min]")
-  graphics::boxplot(temp_sd_raw$mz,temp_sd_aligned$mz_correct,outline=F,main="Variability of feature mz",names = c("Raw","Aligned"),ylab="SD of mz [Da]")
+
+  tryCatch({
+      graphics::boxplot(temp_sd_raw$RT,temp_sd_aligned$RT_correct,outline=F,main="Variability of feature RT",names = c("Raw","Aligned"),ylab="SD of RT [min]")
+      graphics::boxplot(temp_sd_raw$mz,temp_sd_aligned$mz_correct,outline=F,main="Variability of feature mz",names = c("Raw","Aligned"),ylab="SD of mz [Da]")
+    },
+    error=function(cond) {
+      warning(paste("Error while plotting performance of feature alignment. Original message \n",cond))
+    })
+
   grDevices::dev.off()
 
 
@@ -7285,64 +7681,39 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
   save(temp_results,file = "Quantification_raw_results_with_scores_filtered.RData")
 
-  # path_to_features <- "F:\\9_Spike_in_data_sets\\4_spike-in human Shen\\Requant\\19 - DDAicer reprocessed"
-  # path_to_MaxQ_output <- "F:\\9_Spike_in_data_sets\\4_spike-in human Shen\\MaxQuant"
-  # output_file_names_add <- "_DDAiceR_analysis"
-  # n_cores <- 3
-  # abundance_estimation_correction <- T
-  # calc_protein_LFQ <- T
-  # calc_peptide_LFQ <- F
-  #
-  # setwd(base::paste(path_to_features,"\\Temporary_files",sep=""))
-  # load("Quantification_raw_results_with_scores_filtered.RData")
-  # features <- temp_results$features
-  # features_intensity <- temp_results$features_intensity
-  # Ioncount_feature_sample_matrix <- temp_results$Ioncount_feature_sample_matrix
-  # feature_with_background_intensity <- temp_results$feature_with_background_intensity
-  # feature_with_background_intensity_imputed <- temp_results$feature_with_background_intensity_imputed
-  # Ioncount_feature_with_background_intensity <- temp_results$Ioncount_feature_with_background_intensity
-  # peak_selected <- temp_results$peak_selected
-  # S2B <- temp_results$S2B
-  # pval_signal_with_background_quant <- temp_results$pval_signal_with_background_quant
-  # alignment_variability_score <- temp_results$alignment_variability_score
-  # alignment_scores_peaks_correct <- temp_results$alignment_scores_peaks_correct
-  # mono_iso_alignment_summary <- temp_results$mono_iso_alignment_summary
-  # QC_data <- temp_results$QC_data
-  # library(stringr)
-  # library(doParallel)
   ###Perform protein level quantification
 
-  correct_intensities <- function(features,feature_sample_matrix_requantified,pval_quant,MaxQ_peptides_quant,main="",corr_factor=NA)
+  correct_intensities <- function(features,feature_sample_matrix_requantified,pval_quant,preprocess_peptides_quant,main="",corr_factor=NA)
   {
     #suppressWarnings(suppressMessages(library(data.table,quietly = T)))
     #suppressWarnings(suppressMessages(library(dplyr,quietly = T)))
 
     if(is.na(corr_factor)) ###no correction factor specified so correction will be determined and then applied
     {
-      ###select monoisotopic features with significant quantification for determination of general trends in difference between MaxQ and Requant quantification
+      ###select monoisotopic features with significant quantification for determination of general trends in difference between preprocessed and Requant quantification
       select <- which(!grepl("_i|_d",features$Feature_name))
       feature_quant <- feature_sample_matrix_requantified[select,]
       feature_quant_pval <- pval_quant[select,]
       feature_quant[is.na(feature_quant_pval) | feature_quant_pval > 0.1] <- NA
       features_select <- features[select,]
-      ###determine deviations between Requant and MaxQ in abundance estimations
+      ###determine deviations between Requant and preprocess in abundance estimations
       Requant_peptides_quant_seq <- stats::aggregate(10^feature_quant,by=list(Sequence=features_select$Sequence),FUN=sum)
       Requant_peptides_quant_seq[,-1] <- base::log2(Requant_peptides_quant_seq[,-1])
-      ###bring MaxQ results table into same order as Requant output
-      if(ncol(MaxQ_peptides_quant) != ncol(Requant_peptides_quant_seq))
+      ###bring preprocess results table into same order as Requant output
+      if(ncol(preprocess_peptides_quant) != ncol(Requant_peptides_quant_seq))
       {
-        colnames(MaxQ_peptides_quant) <- base::gsub("Intensity.","",colnames(MaxQ_peptides_quant))
-        ordering <- vector("numeric",ncol(MaxQ_peptides_quant))
-        for(i in 1:ncol(MaxQ_peptides_quant))
+        colnames(preprocess_peptides_quant) <- base::gsub("Intensity.","",colnames(preprocess_peptides_quant))
+        ordering <- vector("numeric",ncol(preprocess_peptides_quant))
+        for(i in 1:ncol(preprocess_peptides_quant))
         {
-          overlap <- grepl(base::paste(colnames(MaxQ_peptides_quant)[i],"$",sep=""),colnames(Requant_peptides_quant_seq))
+          overlap <- grepl(base::paste(colnames(preprocess_peptides_quant)[i],"$",sep=""),colnames(Requant_peptides_quant_seq))
           ordering[i] <- ifelse(any(overlap),which(overlap == T),NA)
         }
-        MaxQ_peptides_quant <- MaxQ_peptides_quant[,which(!is.na(ordering))]
+        preprocess_peptides_quant <- preprocess_peptides_quant[,which(!is.na(ordering))]
         ordering <- ordering[!is.na(ordering)]
-        MaxQ_peptides_quant <- MaxQ_peptides_quant[,ordering]
+        preprocess_peptides_quant <- preprocess_peptides_quant[,ordering]
       }
-      comb <- dplyr::full_join(MaxQ_peptides_quant,Requant_peptides_quant_seq,by="Sequence")
+      comb <- dplyr::full_join(preprocess_peptides_quant,Requant_peptides_quant_seq,by="Sequence")
 
       ncolumns <- ncol(feature_sample_matrix_requantified)
 
@@ -7356,11 +7727,11 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
         temp <- base::as.data.frame(cbind(comb[,i+1],comb[,i+1+ncolumns]))
         data.table::set(dat,as.integer(start_index:end_index),j=as.integer(1:2),value=temp)
       }
-      colnames(dat) <- c("MaxQ","Requant")
+      colnames(dat) <- c("preprocess","Requant")
       dat <- stats::na.omit(dat)
       if(main != "")main=base::paste(" ",main,sep="")
       grDevices::pdf(base::paste("Correct feature abundance estimations",main,".pdf",sep=""))
-      graphics::smoothScatter(dat[,1],dat[,2],ylab="Requant, log2",xlab="MaxQ, log2",main="Correlation of MaxQ vs Requant on peptide level")
+      graphics::smoothScatter(dat[,1],dat[,2],ylab="Requant, log2",xlab="Preprocess, log2",main="Correlation of Preprocess vs Requant on peptide level")
       graphics::abline(a=0,b=1)
       temp <- dat[c(order(dat[,2],decreasing = T)[1:(0.1*nrow(dat))],order(dat[,2],decreasing = F)[1:(0.1*nrow(dat))]),]
       y <- temp[,2]
@@ -7384,7 +7755,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       {
         features_sample_matrix_corrected[,c] <- (features_sample_matrix_corrected[,c]*correction)
       }
-      return(list(features_sample_matrix_corrected,
+      return(list(corrected=features_sample_matrix_corrected,
                   correction_data=dat,
                   correction_fit=fit,
                   correction_factor=correction))
@@ -7842,97 +8213,104 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
   crap <- gc(F)
   ###perform protein level aggregation
-  if(!is.null(path_to_MaxQ_output))
+  if(file.exists("preprocess_quant.RData") & file.exists("id_mapping.RData"))
   {
-    ###load MaxQ peptide results
-    MaxQ_peptides <- utils::read.table(base::paste(path_to_MaxQ_output,"/peptides.txt",sep=""),sep="\t",header=T)
-    MaxQ_peptides <- MaxQ_peptides[-which(MaxQ_peptides$Potential.contaminant == "+" | MaxQ_peptides$Reverse == "+"),]
-    if(multiplicity == 1)MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.",colnames(MaxQ_peptides)))]
-    if(multiplicity > 1)MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.[LMH]\\.",colnames(MaxQ_peptides)))]
-    MaxQ_peptides_quant[MaxQ_peptides_quant==0] <- NA
-    MaxQ_peptides_quant <- base::log2(MaxQ_peptides_quant)
-    MaxQ_peptides_leading_razor <- base::data.frame(Sequence=MaxQ_peptides$Sequence,Leading_razor=MaxQ_peptides$Leading.razor.protein)
-    MaxQ_peptides_leading_razor$Leading_razor <- as.character(MaxQ_peptides_leading_razor$Leading_razor)
-    MaxQ_peptides <- base::data.frame(Sequence=MaxQ_peptides$Sequence,MaxQ_peptides_quant)
+    ###load preprocess peptide results
+    preprocess <- new.env()
+    load("preprocess_quant.RData",preprocess)
+    load("id_mapping.RData",preprocess)
 
-    MaxQ_protein_groups <- utils::read.table(base::paste(path_to_MaxQ_output,"/proteinGroups.txt",sep=""),sep="\t",header=T)
+    preprocess_peptides <- preprocess$peptides[,-2]
+
+    #
+    # MaxQ_peptides <- utils::read.table(base::paste(path_to_input,"/peptides.txt",sep=""),sep="\t",header=T)
+    # MaxQ_peptides <- MaxQ_peptides[-which(MaxQ_peptides$Potential.contaminant == "+" | MaxQ_peptides$Reverse == "+"),]
+    # if(multiplicity == 1)MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.",colnames(MaxQ_peptides)))]
+    # if(multiplicity > 1)MaxQ_peptides_quant <- MaxQ_peptides[,which(grepl("Intensity\\.[LMH]\\.",colnames(MaxQ_peptides)))]
+    # MaxQ_peptides_quant[MaxQ_peptides_quant==0] <- NA
+    # MaxQ_peptides_quant <- base::log2(MaxQ_peptides_quant)
+    # MaxQ_peptides_leading_razor <- base::data.frame(Sequence=MaxQ_peptides$Sequence,Leading_razor=MaxQ_peptides$Leading.razor.protein)
+    # MaxQ_peptides_leading_razor$Leading_razor <- as.character(MaxQ_peptides_leading_razor$Leading_razor)
+    # MaxQ_peptides <- base::data.frame(Sequence=MaxQ_peptides$Sequence,MaxQ_peptides_quant)
+    #
+    # MaxQ_protein_groups <- utils::read.table(base::paste(path_to_input,"/proteinGroups.txt",sep=""),sep="\t",header=T)
 
     ###check if IDs were correctly parsed, if not, try to parse with SwissProt or Trembl
-    if(!any(colnames(MaxQ_protein_groups) == "Gene.names") & any(colnames(MaxQ_protein_groups) == "Protein.IDs")) ##not correctly parsed but contains trembl or swissprot fasta headers
-    {
-      print("Fasta file was not correctly parsed during search. Try to base::paste fasta headers ...")
-      if(any(grepl(">sp|>tr",MaxQ_protein_groups$Fasta.headers)))
-      {
-        print("Detected Swiss-Prot and/or TrEMBL fasta headers.")
-        ##protein level
-        ###parsing was not performed correctly so we have to try to do this here expecting swissprot or trembl fasta headers
-        MaxQ_protein_groups$Gene.names <- ""
-        MaxQ_protein_groups$Organism <- ""
-        MaxQ_protein_groups$Protein.IDs <- as.character(MaxQ_protein_groups$Protein.IDs)
-
-        fasta_headers <- stringr::str_split(base::gsub(">","",MaxQ_protein_groups$Fasta.headers),"\\|",simplify = T)
-
-        ##extract gene name and species information
-        GN <- vector("character",nrow(MaxQ_protein_groups))
-        #OS <- vector("character",nrow(MaxQ_protein_groups))
-        ID <- vector("character",nrow(MaxQ_protein_groups))
-        GN_start <- unlist(lapply(base::paste(gregexpr("GN=",MaxQ_protein_groups$Fasta.headers),sep=","), `[[`, 1))
-        GN_start <- base::gsub("c\\(|\\)","",GN_start)
-        #OS_start <- unlist(lapply(base::paste(gregexpr("OS=",MaxQ_protein_groups$Fasta.headers),sep=","), `[[`, 1))
-        #OS_start <- base::gsub("c\\(|\\)","",OS_start)
-        for(i in 1:nrow(MaxQ_protein_groups))
-        {
-          if(GN_start[i] != "-1")
-          {
-            indices <- as.numeric(unlist(stringr::str_split(GN_start[i],","))) + 3
-            stop <- regexpr(" ",substring(MaxQ_protein_groups$Fasta.headers[i],indices,indices+10))
-            GN_temp <- substring(MaxQ_protein_groups$Fasta.headers[i],indices,indices+stop-2)
-            GN[i] <- base::paste(GN_temp,collapse = ";")
-          }
-          # if(OS_start[i] != "-1")
-          # {
-          #   indices <- as.numeric(unlist(stringr::str_split(OS_start[i],","))) + 3
-          #   stop <- regexpr("GN=",substring(MaxQ_protein_groups$Fasta.headers[i],indices,indices+100))
-          #   OS_temp <- substring(MaxQ_protein_groups$Fasta.headers[i],indices,indices+stop-3)
-          #   OS[i] <- base::paste(OS_temp,collapse = ";")
-          # }
-          header <- fasta_headers[i,c(2,4,6)][which(fasta_headers[i,c(2,4,6)] != "")]
-          if(length(header)>0)ID[i] <- base::paste(header,collapse=";")
-        }
-        CON_REV <- !grepl("^CON_|^REV_",MaxQ_protein_groups$Protein.IDs)
-        MaxQ_protein_groups$Protein.IDs <- ifelse(CON_REV,ID, MaxQ_protein_groups$Protein.IDs)
-        MaxQ_protein_groups$Gene.names <- ifelse(CON_REV,GN,"")
-        #MaxQ_protein_groups$Organism <- ifelse(CON_REV,OS,"")
-        MaxQ_protein_groups$Majority.protein.IDs <- MaxQ_protein_groups$Protein.IDs
-
-        ##peptide level
-        if(any(grepl("\\|",MaxQ_peptides_leading_razor$Leading_razor)))
-        {
-          temp <- stringr::str_split(MaxQ_peptides_leading_razor$Leading_razor,"\\|",simplify = T)
-          MaxQ_peptides_leading_razor$Leading_razor <- ifelse(temp[,2] != "",temp[,2],MaxQ_peptides_leading_razor$Leading_razor)
-        }
-
-        ##requantification features
-        temp <- stringr::str_split(features$Protein,"\\||;",simplify=T)
-        ID <- vector("character",nrow(temp))
-        for(i in 1:nrow(temp))
-        {
-          sel <- which(temp[i,] == "sp")+1
-          if(length(sel)>0)
-          {
-            ID[i] <- base::paste(temp[i,sel],collapse=";")
-          }else
-          {
-            sel <- which(temp[i,] != "")
-            ID[i] <- base::paste(temp[i,sel],collapse=";")
-          }
-        }
-        features$Protein <- ID
-      }else
-      {
-        print("No supported fasta headers were detected. Next steps might be not fully working.")
-      }
-    }
+    # if(!any(colnames(MaxQ_protein_groups) == "Gene.names") & any(colnames(MaxQ_protein_groups) == "Protein.IDs")) ##not correctly parsed but contains trembl or swissprot fasta headers
+    # {
+    #   print("Fasta file was not correctly parsed during search. Try to base::paste fasta headers ...")
+    #   if(any(grepl(">sp|>tr",MaxQ_protein_groups$Fasta.headers)))
+    #   {
+    #     print("Detected Swiss-Prot and/or TrEMBL fasta headers.")
+    #     ##protein level
+    #     ###parsing was not performed correctly so we have to try to do this here expecting swissprot or trembl fasta headers
+    #     MaxQ_protein_groups$Gene.names <- ""
+    #     MaxQ_protein_groups$Organism <- ""
+    #     MaxQ_protein_groups$Protein.IDs <- as.character(MaxQ_protein_groups$Protein.IDs)
+    #
+    #     fasta_headers <- stringr::str_split(base::gsub(">","",MaxQ_protein_groups$Fasta.headers),"\\|",simplify = T)
+    #
+    #     ##extract gene name and species information
+    #     GN <- vector("character",nrow(MaxQ_protein_groups))
+    #     #OS <- vector("character",nrow(MaxQ_protein_groups))
+    #     ID <- vector("character",nrow(MaxQ_protein_groups))
+    #     GN_start <- unlist(lapply(base::paste(gregexpr("GN=",MaxQ_protein_groups$Fasta.headers),sep=","), `[[`, 1))
+    #     GN_start <- base::gsub("c\\(|\\)","",GN_start)
+    #     #OS_start <- unlist(lapply(base::paste(gregexpr("OS=",MaxQ_protein_groups$Fasta.headers),sep=","), `[[`, 1))
+    #     #OS_start <- base::gsub("c\\(|\\)","",OS_start)
+    #     for(i in 1:nrow(MaxQ_protein_groups))
+    #     {
+    #       if(GN_start[i] != "-1")
+    #       {
+    #         indices <- as.numeric(unlist(stringr::str_split(GN_start[i],","))) + 3
+    #         stop <- regexpr(" ",substring(MaxQ_protein_groups$Fasta.headers[i],indices,indices+10))
+    #         GN_temp <- substring(MaxQ_protein_groups$Fasta.headers[i],indices,indices+stop-2)
+    #         GN[i] <- base::paste(GN_temp,collapse = ";")
+    #       }
+    #       # if(OS_start[i] != "-1")
+    #       # {
+    #       #   indices <- as.numeric(unlist(stringr::str_split(OS_start[i],","))) + 3
+    #       #   stop <- regexpr("GN=",substring(MaxQ_protein_groups$Fasta.headers[i],indices,indices+100))
+    #       #   OS_temp <- substring(MaxQ_protein_groups$Fasta.headers[i],indices,indices+stop-3)
+    #       #   OS[i] <- base::paste(OS_temp,collapse = ";")
+    #       # }
+    #       header <- fasta_headers[i,c(2,4,6)][which(fasta_headers[i,c(2,4,6)] != "")]
+    #       if(length(header)>0)ID[i] <- base::paste(header,collapse=";")
+    #     }
+    #     CON_REV <- !grepl("^CON_|^REV_",MaxQ_protein_groups$Protein.IDs)
+    #     MaxQ_protein_groups$Protein.IDs <- ifelse(CON_REV,ID, MaxQ_protein_groups$Protein.IDs)
+    #     MaxQ_protein_groups$Gene.names <- ifelse(CON_REV,GN,"")
+    #     #MaxQ_protein_groups$Organism <- ifelse(CON_REV,OS,"")
+    #     MaxQ_protein_groups$Majority.protein.IDs <- MaxQ_protein_groups$Protein.IDs
+    #
+    #     ##peptide level
+    #     if(any(grepl("\\|",MaxQ_peptides_leading_razor$Leading_razor)))
+    #     {
+    #       temp <- stringr::str_split(MaxQ_peptides_leading_razor$Leading_razor,"\\|",simplify = T)
+    #       MaxQ_peptides_leading_razor$Leading_razor <- ifelse(temp[,2] != "",temp[,2],MaxQ_peptides_leading_razor$Leading_razor)
+    #     }
+    #
+    #     ##requantification features
+    #     temp <- stringr::str_split(features$Protein,"\\||;",simplify=T)
+    #     ID <- vector("character",nrow(temp))
+    #     for(i in 1:nrow(temp))
+    #     {
+    #       sel <- which(temp[i,] == "sp")+1
+    #       if(length(sel)>0)
+    #       {
+    #         ID[i] <- base::paste(temp[i,sel],collapse=";")
+    #       }else
+    #       {
+    #         sel <- which(temp[i,] != "")
+    #         ID[i] <- base::paste(temp[i,sel],collapse=";")
+    #       }
+    #     }
+    #     features$Protein <- ID
+    #   }else
+    #   {
+    #     print("No supported fasta headers were detected. Next steps might be not fully working.")
+    #   }
+    # }
 
     #####Correct for overestimation of high intense features
     if(abundance_estimation_correction == F) ###no correction
@@ -7940,25 +8318,34 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       feature_with_background_intensity <- base::log2(10^feature_with_background_intensity)
       feature_with_background_intensity_imputed <- base::log2(10^feature_with_background_intensity_imputed)
 
-    }else ##correct abundance estimations based on MaxQ peptide abundance estimations
+    }else ##correct abundance estimations based on preprocessed peptide abundance estimations
     {
-      ###determine abundance correction factors based on MaxQ peptide intensities and data without imputation
-      cor_res <- correct_intensities(features,feature_sample_matrix_requantified = feature_with_background_intensity,pval_quant = pval_signal_with_background_quant,MaxQ_peptides_quant = MaxQ_peptides,main="Signal_Background_intensity")
+      ###determine abundance correction factors based on preprocessed peptide intensities and data without imputation
+      cor_res <- correct_intensities(features,
+                                     feature_sample_matrix_requantified = feature_with_background_intensity,
+                                     pval_quant = pval_signal_with_background_quant,
+                                     preprocess_peptides_quant = preprocess_peptides,
+                                     main="Signal_Background_intensity")
 
       feature_with_background_intensity <- cor_res[[1]]
       QC_data[["Abundance_correction"]] <- list(correction_data=cor_res[[2]],
                                                 correction_fit=cor_res[[3]],
                                                 correction_factor=cor_res[[4]])
 
-      cor_res <- correct_intensities(features,feature_sample_matrix_requantified = feature_with_background_intensity_imputed,pval_quant = pval_signal_with_background_quant,MaxQ_peptides_quant = MaxQ_peptides,main="Signal_Background_intensity_imputed",corr_factor = cor_res[[4]])
+      cor_res <- correct_intensities(features,
+                                     feature_sample_matrix_requantified = feature_with_background_intensity_imputed,
+                                     pval_quant = pval_signal_with_background_quant,
+                                     preprocess_peptides_quant = preprocess_peptides,
+                                     main="Signal_Background_intensity_imputed",
+                                     corr_factor = cor_res[[4]])
 
       feature_with_background_intensity_imputed <- cor_res[[1]]
     }
 
-    ###get leading razor ID per peptide sequence
+    ###convert protein ids to leading razor ids
     features$Protein <- as.character(features$Protein)
     features$all_matching_Proteins <- features$Protein
-    features$Protein <- as.character(MaxQ_peptides_leading_razor$Leading_razor[match(features$Sequence,MaxQ_peptides_leading_razor$Sequence)])
+    features$Protein <- as.character(preprocess$peptides$ID[match(features$Sequence,preprocess$peptides$Sequence)])
     features$Protein[is.na(features$Protein)] <- features$all_matching_Proteins[is.na(features$Protein)]
 
     ###perform peptide level LFQ
@@ -8676,49 +9063,41 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     Total_quant_with_background_imputed <- res[[4]]
 
     ###Match Gene names to Uniprot Identifier
-    if(any(colnames(MaxQ_protein_groups) == "Gene.names") & any(colnames(MaxQ_protein_groups) == "Protein.IDs"))
+    if(any(colnames(preprocess$id_mapping) == "Gene_Name") & any(colnames(preprocess$id_mapping) == "ID"))
     {
-      temp <- MaxQ_protein_groups[,c("Gene.names","Protein.IDs")]
-      temp <- temp[which(temp$Gene.names != ""),]
+      temp <- preprocess$id_mapping
+      temp <- temp[which(temp$Gene_Name != ""),]
 
-      UniProt_to_GeneName <- base::data.frame(UniProt_ID=unique(as.character(stringr::str_split(temp$Protein.IDs,";",simplify = T))),Gene_Name="")
-      UniProt_to_GeneName$Gene_Name <- as.character(UniProt_to_GeneName$Gene_Name)
-
-      for(i in 1:nrow(UniProt_to_GeneName))
-      {
-        UniProt_to_GeneName$Gene_Name[i] <- as.character(temp$Gene.names[which(grepl(UniProt_to_GeneName$UniProt_ID[i],temp$Protein.IDs))])
-      }
-
-      Top3_quant_with_background <- base::data.frame(Gene_Name=UniProt_to_GeneName$Gene_Name[match(rownames(Top3_quant_with_background),UniProt_to_GeneName$UniProt_ID)],UniProt_Identifier=rownames(Top3_quant_with_background),Top3_quant_with_background)
+      Top3_quant_with_background <- base::data.frame(Gene_Name=temp$Gene_Name[match(rownames(Top3_quant_with_background),temp$ID)],UniProt_Identifier=rownames(Top3_quant_with_background),Top3_quant_with_background)
       rownames(Top3_quant_with_background) <- c()
 
-      Total_quant_with_background <- base::data.frame(Gene_Name=UniProt_to_GeneName$Gene_Name[match(rownames(Total_quant_with_background),UniProt_to_GeneName$UniProt_ID)],UniProt_Identifier=rownames(Total_quant_with_background),Total_quant_with_background)
+      Total_quant_with_background <- base::data.frame(Gene_Name=temp$Gene_Name[match(rownames(Total_quant_with_background),temp$ID)],UniProt_Identifier=rownames(Total_quant_with_background),Total_quant_with_background)
       rownames(Total_quant_with_background) <- c()
 
-      Top3_quant_with_background_imputed <- base::data.frame(Gene_Name=UniProt_to_GeneName$Gene_Name[match(rownames(Top3_quant_with_background_imputed),UniProt_to_GeneName$UniProt_ID)],UniProt_Identifier=rownames(Top3_quant_with_background_imputed),Top3_quant_with_background_imputed)
+      Top3_quant_with_background_imputed <- base::data.frame(Gene_Name=temp$Gene_Name[match(rownames(Top3_quant_with_background_imputed),temp$ID)],UniProt_Identifier=rownames(Top3_quant_with_background_imputed),Top3_quant_with_background_imputed)
       rownames(Top3_quant_with_background_imputed) <- c()
 
-      Total_quant_with_background_imputed <- base::data.frame(Gene_Name=UniProt_to_GeneName$Gene_Name[match(rownames(Total_quant_with_background_imputed),UniProt_to_GeneName$UniProt_ID)],UniProt_Identifier=rownames(Total_quant_with_background_imputed),Total_quant_with_background_imputed)
+      Total_quant_with_background_imputed <- base::data.frame(Gene_Name=temp$Gene_Name[match(rownames(Total_quant_with_background_imputed),temp$ID)],UniProt_Identifier=rownames(Total_quant_with_background_imputed),Total_quant_with_background_imputed)
       rownames(Total_quant_with_background_imputed) <- c()
 
       if(calc_peptide_LFQ == T)
       {
-        LFQ_peptide_quant_with_background <- base::data.frame(Gene_Name=UniProt_to_GeneName$Gene_Name[match(LFQ_peptide_quant_with_background$Protein,UniProt_to_GeneName$UniProt_ID)],UniProt_Identifier=LFQ_peptide_quant_with_background$Protein,LFQ_peptide_quant_with_background[,c(1,2,4,5:ncol(LFQ_peptide_quant_with_background))])
+        LFQ_peptide_quant_with_background <- base::data.frame(Gene_Name=temp$Gene_Name[match(LFQ_peptide_quant_with_background$Protein,temp$ID)],UniProt_Identifier=LFQ_peptide_quant_with_background$Protein,LFQ_peptide_quant_with_background[,c(1,2,4,5:ncol(LFQ_peptide_quant_with_background))])
         rownames(LFQ_peptide_quant_with_background) <- c()
         colnames(LFQ_peptide_quant_with_background) <- base::gsub("^X","",colnames(LFQ_peptide_quant_with_background))
 
-        LFQ_peptide_quant_with_background_imputed <- base::data.frame(Gene_Name=UniProt_to_GeneName$Gene_Name[match(LFQ_peptide_quant_with_background_imputed$Protein,UniProt_to_GeneName$UniProt_ID)],UniProt_Identifier=LFQ_peptide_quant_with_background_imputed$Protein,LFQ_peptide_quant_with_background_imputed[,c(1,2,4,5:ncol(LFQ_peptide_quant_with_background_imputed))])
+        LFQ_peptide_quant_with_background_imputed <- base::data.frame(Gene_Name=temp$Gene_Name[match(LFQ_peptide_quant_with_background_imputed$Protein,temp$ID)],UniProt_Identifier=LFQ_peptide_quant_with_background_imputed$Protein,LFQ_peptide_quant_with_background_imputed[,c(1,2,4,5:ncol(LFQ_peptide_quant_with_background_imputed))])
         rownames(LFQ_peptide_quant_with_background_imputed) <- c()
         colnames(LFQ_peptide_quant_with_background_imputed) <- base::gsub("^X","",colnames(LFQ_peptide_quant_with_background_imputed))
       }
 
       if(calc_protein_LFQ == T)
       {
-        LFQ_quant_with_background <- base::data.frame(Gene_Name=UniProt_to_GeneName$Gene_Name[match(rownames(LFQ_quant_with_background),UniProt_to_GeneName$UniProt_ID)],UniProt_Identifier=rownames(LFQ_quant_with_background),LFQ_quant_with_background)
+        LFQ_quant_with_background <- base::data.frame(Gene_Name=temp$Gene_Name[match(rownames(LFQ_quant_with_background),temp$ID)],UniProt_Identifier=rownames(LFQ_quant_with_background),LFQ_quant_with_background)
         rownames(LFQ_quant_with_background) <- c()
         colnames(LFQ_quant_with_background) <- base::gsub("^X","",colnames(LFQ_quant_with_background))
 
-        LFQ_quant_with_background_imputed <- base::data.frame(Gene_Name=UniProt_to_GeneName$Gene_Name[match(rownames(LFQ_quant_with_background_imputed),UniProt_to_GeneName$UniProt_ID)],UniProt_Identifier=rownames(LFQ_quant_with_background_imputed),LFQ_quant_with_background_imputed)
+        LFQ_quant_with_background_imputed <- base::data.frame(Gene_Name=temp$Gene_Name[match(rownames(LFQ_quant_with_background_imputed),temp$ID)],UniProt_Identifier=rownames(LFQ_quant_with_background_imputed),LFQ_quant_with_background_imputed)
         rownames(LFQ_quant_with_background_imputed) <- c()
         colnames(LFQ_quant_with_background_imputed) <- base::gsub("^X","",colnames(LFQ_quant_with_background_imputed))
       }

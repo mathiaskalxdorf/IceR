@@ -47,28 +47,34 @@ run_panel <- fluidPage(
                               selected = 1),
 
            #actionButton("run_feature_alignment", "Only feature alignment",width = 170),
-           br()#,
+           br(),
            #actionButton("run_requantification", "Only quantification",width = 170)
+           radioButtons("preprocess_pipeline",
+                        h3("Pre-Pipeline"),
+                        choices = list("MaxQ" = 1,
+                                       "User" = 2),
+                        selected = 1),
+           br()
+
+
     ),
 
     column(3,
            h3("Raw files"),
-           #shinyDirButton("Raw_folder", "Choose directory", "Select folder containing Raw files"),
            actionButton("Raw_folder", "Choose directory",width = 170),
            verbatimTextOutput("Raw_folder", placeholder = TRUE),
            helpText("Select the folder containing MS raw files")
     ),
 
     column(3,
-           h3("MaxQ folder"),
-           actionButton("MaxQ_output_folder", "Choose directory",width = 170),
-           #shinyDirButton("MaxQ_output_folder", "Choose directory", "Select MaxQ output folder"),
-           verbatimTextOutput("MaxQ_output_folder", placeholder = TRUE),
-           helpText("Select the folder containing MaxQuant output files e.g. the txt output folder")
+           h3("Preprocess"),
+           actionButton("preprocess_output_folder", "Choose directory",width = 170),
+           verbatimTextOutput("preprocess_output_folder", placeholder = TRUE),
+           helpText("Select the folder containing preprocess output files e.g. the txt output folder from MaxQuant")
     ),
 
     column(3,
-           h3("Results folder"),
+           h3("IceR results"),
            actionButton("IceR_output", "Choose directory",width = 170),
            #shinyDirButton("IceR_output", "Choose directory", "Select folder where results should be stored"),
            verbatimTextOutput("IceR_output", placeholder = TRUE),
@@ -281,9 +287,9 @@ run_all_processes <- function(settings_list)
   calc_protein_LFQ <- T#ifelse(any(settings_list$requant_settings == "8"),T,F)
 
 
-  path_to_MaxQ_output <- ifelse(endsWith(settings_list$MaxQ_output_folder,"/"),
-                                substr(settings_list$MaxQ_output_folder,1,nchar(settings_list$MaxQ_output_folder)-1),
-                                settings_list$MaxQ_output_folder)
+  path_to_input <- ifelse(endsWith(settings_list$preprocess_output_folder,"/"),
+                                substr(settings_list$preprocess_output_folder,1,nchar(settings_list$preprocess_output_folder)-1),
+                                settings_list$preprocess_output_folder)
 
 
 
@@ -297,7 +303,8 @@ run_all_processes <- function(settings_list)
 
   n_cores <- settings_list$n_cores
 
-  MassSpec_mode <- ifelse(settings_list$MassSpec_settings=="1","Orbitrap","TIMSToF") #"1" Orbitrap "2" TIMSToF with IM "3" TIMSToF without IM
+  preprocess_pipeline <- ifelse(settings_list$preprocess_pipeline=="1","MaxQ","User") #"1" MaxQ "2" User
+  MassSpec_mode <- ifelse(settings_list$MassSpec_settings=="1","Orbitrap","TIMSToF") #"1" Orbitrap "2" TIMSToF with IM
   use_IM_data <- ifelse(settings_list$MassSpec_settings=="2",T,F)
 
   multiplicity <- ifelse(settings_list$multiplicity_settings == "1",1,
@@ -335,10 +342,10 @@ run_all_processes <- function(settings_list)
     ###Save all parameters
     setProgress(cur_step,message="Prepare settings and parameters")
 
-    Parameters <- as.data.frame(matrix(ncol=2,nrow=30))
+    Parameters <- as.data.frame(matrix(ncol=2,nrow=31))
     colnames(Parameters) <- c("Settings_name","Setting")
     Parameters$Settings_name <- c("Path to raw files",
-                                  "Path to MaxQ results",
+                                  "Path to preprocess results",
                                   "Path to results",
                                   "Analysis name",
                                   "mz_window",
@@ -366,9 +373,10 @@ run_all_processes <- function(settings_list)
                                   "Multiplicity",
                                   "Light_labels",
                                   "Medium_labels",
-                                  "Heavy_labels")
+                                  "Heavy_labels",
+                                  "Preprocess pipeline")
     Parameters$Setting <- c(settings_list$Raw_folder,
-                            path_to_MaxQ_output,
+                            path_to_input,
                             path_to_output,
                             settings_list$analysis_name,
                             mz_window,
@@ -396,7 +404,8 @@ run_all_processes <- function(settings_list)
                             multiplicity,
                             paste(light_labels,collapse = ","),
                             paste(medium_labels,collapse = ","),
-                            paste(heavy_labels,collapse = ","))
+                            paste(heavy_labels,collapse = ","),
+                            preprocess_pipeline)
 
     sample_list <- list.files(settings_list$Raw_folder)
     sample_list <- sample_list[which(grepl("\\.raw|\\.d",sample_list))]
@@ -453,8 +462,9 @@ run_all_processes <- function(settings_list)
       stop("Less than 2 sample raw files are available in the Raw files folder.")
     }
 
-    align_features(path_to_MaxQ_output = path_to_MaxQ_output,
+    align_features(path_to_input = path_to_input,
                    path_to_output=path_to_output,
+                   preprocess_pipeline = preprocess_pipeline,
                    output_file_names_add=settings_list$analysis_name,
                    mz_window = mz_window,
                    RT_window = RT_window,
@@ -494,7 +504,7 @@ run_all_processes <- function(settings_list)
       setProgress(cur_step,message="Add potentially missed peptide features")
       add_missed_peptides(path_to_features=path_to_output,
                           feature_table_file_name=paste("Features_aligned_merged_",settings_list$analysis_name,".txt",sep=""),
-                          path_to_fasta=paste(path_to_MaxQ_output,"/Search_DB.fasta",sep=""))
+                          path_to_fasta=paste(path_to_input,"/Search_DB.fasta",sep=""))
       print(paste(Sys.time(),"Addition of potentially missed peptide features finished"))
     }
 
@@ -504,7 +514,7 @@ run_all_processes <- function(settings_list)
 
     requantify_features(path_to_features = path_to_output,
                         path_to_mzXML = path_to_mzXML,
-                        path_to_MaxQ_output = path_to_MaxQ_output,
+                        path_to_input = path_to_input,
                         feature_table_file_name=paste("Features_aligned_merged_",settings_list$analysis_name,".txt",sep=""),
                         output_file_names_add=settings_list$analysis_name,
                         RT_calibration=RT_calibration,
@@ -554,45 +564,29 @@ server <- function(input, output,session)
 
 
   ###select file paths
-  global_MaxQ_output_folder <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\MaxQ_Output")#getwd())
+  global_preprocess_output_folder <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\MaxQ_Output")#getwd())
   global_Raw_folder <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\test_shiny\\raw")#getwd())
   global_IceR_output <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\test_shiny\\Results_folder")#getwd())
 
   volumes <- getVolumes()
 
-  ##choose MaxQ output folder
-  # shinyDirChoose(
-  #   input,
-  #   'MaxQ_output_folder',
-  #   roots = getVolumes(),
-  #   #filetypes = c('', 'txt', 'bigWig', "tsv", "csv", "bw")
-  # )
 
-  MaxQ_output_folder <- reactive({
-    return(parseDirPath(volumes, input$MaxQ_output_folder))
+  preprocess_output_folder <- reactive({
+    return(parseDirPath(volumes, input$preprocess_output_folder))
   })
 
-  #MaxQ_output_folder <- reactive(input$MaxQ_output_folder)
-  output$MaxQ_output_folder <- renderText({
-    global_MaxQ_output_folder$datapath
+  output$preprocess_output_folder <- renderText({
+    global_preprocess_output_folder$datapath
   })
 
-  # observe({
-  #   if(!is.null(MaxQ_output_folder)){
-  #     handlerExpr = {
-  #       req(nchar(MaxQ_output_folder())>0)
-  #       global_MaxQ_output_folder$datapath <- paste0(MaxQ_output_folder(),"/")
-  #     }
-  #   }
-  # })
-  observeEvent(input$MaxQ_output_folder, {
+  observeEvent(input$preprocess_output_folder, {
 
     if(Sys.info()["sysname"] != "Darwin")
     {
-      selected_folder <- rchoose.dir(caption = "Choose MaxQ output folder",default = "~")
+      selected_folder <- rchoose.dir(caption = "Choose preprocess output folder",default = "~")
     }else
     {
-      selected_folder <- tcltk::tk_choose.dir(caption = "Choose MaxQ output folder",default = "~")
+      selected_folder <- tcltk::tk_choose.dir(caption = "Choose preprocess output folder",default = "~")
     }
 
     if(length(selected_folder)>0)
@@ -600,7 +594,7 @@ server <- function(input, output,session)
       if(!is.na(selected_folder))
       {
         selected_folder <- gsub("\\\\","/",selected_folder)
-        global_MaxQ_output_folder$datapath <- selected_folder#paste0(selected_folder,"\\")
+        global_preprocess_output_folder$datapath <- selected_folder#paste0(selected_folder,"\\")
       }
     }
   })
@@ -620,18 +614,6 @@ server <- function(input, output,session)
     global_Raw_folder$datapath
   })
 
-  # observe({
-  #   if(!is.null(Raw_folder)){
-  #     handlerExpr = {
-  #       req(nchar(Raw_folder())>0)
-  #       global_Raw_folder$datapath <- paste0(Raw_folder(),"/")
-  #       if(global_MaxQ_output_folder$datapath == getwd())
-  #       {
-  #         global_MaxQ_output_folder$datapath <- paste0(Raw_folder(),"/")
-  #       }
-  #     }
-  #   }
-  # })
 
   observeEvent(input$Raw_folder, {
 
@@ -738,10 +720,33 @@ server <- function(input, output,session)
     }
   })
 
+  ###preprocess pipeline
+  observeEvent(input$preprocess_pipeline, {
+    if(input$preprocess_pipeline == "1")#MaxQ
+    {
+      shinyjs::enable("multiplicity_settings")
+      shinyjs::enable("light_labels")
+      shinyjs::enable("medium_labels")
+      shinyjs::enable("heavy_labels")
+    }
+    if(input$preprocess_pipeline == "2")#User input
+    {
+      updateRadioButtons(session,
+                         "multiplicity_settings",
+                         selected = 1)
+      shinyjs::disable("multiplicity_settings")
+      shinyjs::disable("light_labels")
+      shinyjs::disable("medium_labels")
+      shinyjs::disable("heavy_labels")
+    }
+  })
+
+
   ###buttons
   observeEvent(input$run_all, {
 
-    settings_list <- list(MaxQ_output_folder=global_MaxQ_output_folder$datapath,
+    settings_list <- list(preprocess_output_folder=global_preprocess_output_folder$datapath,
+                          preprocess_pipeline = input$preprocess_pipeline,
                           Raw_folder=global_Raw_folder$datapath,
                           IceR_output = global_IceR_output$datapath,
                           min_RT_window = input$min_RT_window,
@@ -792,7 +797,7 @@ server <- function(input, output,session)
       temp_settings[is.na(temp_settings)] <- 0
 
       global_Raw_folder$datapath <- temp_settings$Setting[1]
-      global_MaxQ_output_folder$datapath <- temp_settings$Setting[2]
+      global_preprocess_output_folder$datapath <- temp_settings$Setting[2]
       global_IceR_output$datapath <- temp_settings$Setting[3]
 
       updateTextInput(session,"Analysis_name",value = temp_settings$Setting[4])
@@ -835,8 +840,12 @@ server <- function(input, output,session)
 
       #massspec mode
       selection_mode <- ifelse(temp_settings$Setting[25] == "TIMSToF" & temp_settings$Setting[26] == T,2,1)
-
       updateRadioButtons(session,inputId = "massspecmode",choices = list("Orbitrap" = 1,"timsTOF" = 2),selected = selection_mode)
+
+      #preprocess pipeline
+      selection_mode <- ifelse(temp_settings$Setting[31] == "MaxQ",1,2)
+      updateRadioButtons(session,inputId = "preprocess_pipeline",choices = list("MaxQ" = 1,"User" = 2),selected = selection_mode)
+
 
       #multiplicity
       selection_multiplicity <- ifelse(temp_settings$Setting[27] == "1",1,
@@ -896,10 +905,10 @@ server <- function(input, output,session)
 
     ###first row
     output$plot_1 <- renderPlot({
-      visualize_MaxQ_RT_calibrations(QC_data)
+      visualize_preprocess_RT_calibrations(QC_data)
     })
     output$plot_2 <- renderPlot({
-      visualize_MaxQ_mz_calibrations(QC_data)
+      visualize_preprocess_mz_calibrations(QC_data)
     })
 
     ###second row
@@ -998,18 +1007,18 @@ server <- function(input, output,session)
 }
 
 ###visualization functions
-visualize_MaxQ_RT_calibrations <- function(QC_data)
+visualize_preprocess_RT_calibrations <- function(QC_data)
 {
-  p <- boxplot(QC_data$MaxQ_calibrations$Retention.time.calibration,main="Detected RT calibrations by MaxQ",ylab="RT correction",outline=F)
+  p <- boxplot(QC_data$preprocess_calibrations$Retention.time.calibration,main="Detected RT calibrations by preprocess",ylab="RT correction",outline=F)
   text(1.3,p$stats[2],round(p$stats[2],digits=2))
   text(1.3,p$stats[3],round(p$stats[3],digits=2))
   text(1.3,p$stats[4],round(p$stats[4],digits=2))
   range <- p$stats[4] - p$stats[2]
 }
 
-visualize_MaxQ_mz_calibrations <- function(QC_data)
+visualize_preprocess_mz_calibrations <- function(QC_data)
 {
-  p <- boxplot(QC_data$MaxQ_calibrations$Uncalibrated...Calibrated.m.z..Da.,main="Detected m/z calibrations by MaxQ",ylab="m/z correction",outline=F)
+  p <- boxplot(QC_data$preprocess_calibrations$Uncalibrated...Calibrated.m.z..Da.,main="Detected m/z calibrations by preprocess",ylab="m/z correction",outline=F)
   text(1.3,p$stats[2],round(p$stats[2],digits=4))
   text(1.3,p$stats[3],round(p$stats[3],digits=4))
   text(1.3,p$stats[4],round(p$stats[4],digits=4))
@@ -1139,7 +1148,7 @@ visualize_peak_selection_FDR <- function(QC_data)
 visualize_quantification_correction <- function(QC_data)
 {
   dat <- QC_data$Abundance_correction$correction_data
-  smoothScatter(dat[,1],dat[,2],ylab="Requant, log2",xlab="MaxQ, log2",main="Correlation of MaxQ vs Requant on peptide level")
+  smoothScatter(dat[,1],dat[,2],ylab="Requant, log2",xlab="preprocess, log2",main="Correlation of preprocess vs Requant on peptide level")
   abline(a=0,b=1)
   temp <- dat[c(order(dat[,2],decreasing = T)[1:(0.1*nrow(dat))],order(dat[,2],decreasing = F)[1:(0.1*nrow(dat))]),]
   y <- temp[,2]

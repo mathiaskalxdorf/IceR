@@ -20,10 +20,10 @@ During installation, please keep default settings and follow respective instruct
 
 If an error occurs during installation of the package rJava, it could indicate that Java is not properly installed. Please follow the installation instructions for Java and rJava (installing suitable JDK version should solve the issue) 
 
-Next, we install the IceR package from GitHub
+Next, we install the IceR package from GitHub (development version)
 ```r
 install.packages("devtools")
-devtools::install_github("mathiaskalxdorf/IceR")
+devtools::install_github("mathiaskalxdorf/IceR",ref = "develop")
 ```
 If everything wents fine, IceR should be installed and can be used (e.g. with the GUI) with the following lines:
 ```r
@@ -53,7 +53,7 @@ In the R console trigger installation of R packages:
 
 ```r
 install.packages('devtools')
-devtools::install_github("mathiaskalxdorf/IceR")
+devtools::install_github("mathiaskalxdorf/IceR",ref = "develop")
 ```
 
 If successful, close and restart R (not in administrator mode):
@@ -85,12 +85,12 @@ Furthermore, please check that a latest version of [Java](https://www.java.com/d
 
 In case of macOS, we additionally have to install [XQuartz](https://www.xquartz.org/)
 
-Start RStudio in administrator/superuser mode and install IceR from GitHub using devtools:
+Start RStudio in administrator/superuser mode and install IceR from GitHub (development version) using devtools:
 
 
 ```r
 install.packages('devtools')
-devtools::install_github("mathiaskalxdorf/IceR")
+devtools::install_github("mathiaskalxdorf/IceR",ref = "develop")
 ```
 
 If an error occurs while installing package utf8, please follow the displayed instructions.
@@ -107,13 +107,40 @@ ProteoWizard and its related msCovert is currently (to my knowledge) not availab
 ### Prerequisites
 IceR was so far tested on Windows 10, Ubuntu 20.04.1, and macOS 11.1.0.
 
-The current version of IceR requires raw MS files (from Thermo Mass Spectrometers or from Bruker TIMS-ToF pro) to be preprocessed with MaxQuant (tested for Versions 1.5.1.2, 1.6.12 and 1.6.14, versions in between should work as well). 
+The current version of IceR requires raw MS files (from Thermo Mass Spectrometers or from Bruker TIMS-ToF pro) to be preprocessed with MaxQuant (tested for Versions 1.5.1.2, 1.6.12, 1.6.14, and 2.0.3.0, versions in between should work as well). Alternatively, the user can supply preprocessed data from any other pipeline by manually providing the required input data in a predefined format. The data has to be supplied in the following 3 tab-separated txt files:
 
-Important notes: 
+ - features.txt table which containes all information about detected features in the following columns:
+        - Raw.file - Name of the Raw file
+        - Charge - Charge state (e.g. 1, 2, 3)
+        - Mass - Monoisotopic mass of the feature
+        - m.z - Mass to charge ratio of feature
+        - Uncalibrated.m.z - (Optional) Uncalibrated mass to charge ratio of feature
+        - Max.intensity.m.z.0 - (Optional) Mass to charge ratio at which highest intensity of ions was detected, typically m/z which was selected as precursor subsequent MS2
+        - Retention.time - Chromatographic retention time in minutes of feature
+        - Calibrated.retention.time - (Optional) Corrected chromatographic retention time in minutes of feature
+        - Retention.Length - Elution peak width in minutes of feature
+        - Sequence - Observed peptide sequence if feature was sequenced
+        - Modifications - Observed post-translational modification of feature. If unmodified, should be `Unmodified`
+        - Score - Any score value for the spectra to peptide matching with normal distributed scores and higher score representing higher significance
+        - Proteins - Matching protein identifier (e.g. Uniprot ID) if feature was sequenced
+        - MSMS.Scan.Numbers - (Optional) Indices of MSMS spectra which matched to the peptide sequence of feature
+        - Intensity - Extracted feature intensity (raw, unloged) by preprocessing pipeline. Should not be `NA`
+
+ - preprocess_quant.txt table which contains peptide-level quantifications observed by preprocessing pipeline in the following columns:
+        - Sequence - Observed peptide sequence
+        - ID - Protein identifier of matching peptide sequence (e.g. Uniprot ID)
+        - Intensity - At least 2 columns containing intensities (in log2) of samples. Column names should start with `Intensity.` followed by the sample name e.g. `Intensity.E3_R1` and `Intensity.E3_R2`. Intensity columns should be ordered by name.
+        
+ - id_mapping.txt table which contains information for mapping from protein IDs to gene names in the following columns:
+        - ID - Protein identifier (e.g. Uniprot ID)
+        - Gene_Name - Corresponding gene name
+
+
+Important general notes: 
 
  - File paths and files should, if possible, not contain blank spaces.
  - File paths and files should not contain special letters like e.g. any of the following: !"§$%&/()=?#*~+-,.
- - Fasta file should be parsed correctly. In this case the column "Gene names" can be found in the proteinGroups.txt.
+ - (Preprocess by MaxQuant) Fasta file should be parsed correctly. In this case the column "Gene names" can be found in the proteinGroups.txt.
  - IceR was yet only tested for the analysis of single-shot sample data but not for fractionated sample data.
  
 Raw Orbitrap files are required in the mzXML format and raw TIMS-ToF data has to be converted into a readable format. If msconvert from ProteoWizard is installed (Windows-only), IceR triggers conversion automatically. Otherwise, the user has to place the converted files in the folder "mzXML" in case of Orbitrap data within the folder containing the raw files. Conversion of Bruker TIMS-ToF pro data is currently only possible if msConvert is installed. 
@@ -139,8 +166,9 @@ runIceR()
 
 It allows setting up the IceR run. Among others, the following parameters can be modified:
 
- - Paths to raw files, MaxQuant results files and IceR output folder
+ - Paths to raw files, preprocessed results files and IceR output folder
  - MassSpec Mode switching between Orbitrap and TIMS-ToF data (with or without using TIMS dimension)
+ - Selection of the pre-processing pipeline (currently either MaxQuant or manual user input)
  - Multiplicity Mode switching between label-free (1 - LFQ) and SILAC (2 - SILAC or 3 - SILAC) and adjusting corresponding label isotopes
  - Minimal retention (RT) and m/z feature alignment windows
  - Kernel density estimation (KDE) resolution (grid points per dimension, increasing resolution increases computation workload but also increases resolution of peak detections) 
