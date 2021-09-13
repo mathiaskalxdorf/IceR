@@ -108,6 +108,10 @@ load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all
   }
   ###Extract quant columns
   intensity_used <- base::gsub(" ","\\\\.",intensity_used[1])
+
+  cols_sel <- which(grepl(base::paste(intensity_used,"\\.",sep=""),colnames(data_protein)))
+  if (length(cols_sel) == 0) stop("The selected quantification column is not availble. Please specify the correct quantification column to be used using the parameter `intensity_used`")
+
   data_protein_quant <- data_protein[,which(grepl(base::paste(intensity_used,"\\.",sep=""),colnames(data_protein)))]
   data_peptide_quant <- data_peptide[,which(grepl("Intensity\\.",colnames(data_peptide)))]
 

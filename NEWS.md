@@ -1,3 +1,11 @@
+# IceR 1.2.1
+
+## Fixes
+
+* Check that selected quantification column in load_MaxQ_data() by parameter `intensity_used` is available and otherwise report an error
+
+---
+
 # IceR 1.2.0
 
 ## New Features
