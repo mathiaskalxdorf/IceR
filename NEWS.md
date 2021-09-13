@@ -2,7 +2,7 @@
 
 ## Fixes
 
-* Check that selected quantification columns in load_MaxQ_data() are available otherwise report suitable error.
+* Check that selected quantification column in load_MaxQ_data() by parameter `intensity_used` is available and otherwise report an error
 
 ---
 
