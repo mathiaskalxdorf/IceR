@@ -7,6 +7,8 @@
 ### Description
 Label-free proteomics enables the unbiased quantification of thousands of proteins across large sample cohorts. Commonly used mass spectrometry-based proteomic workflows rely on data dependent acquisition (DDA). However, its stochastic selection of peptide features for fragmentation-based identification inevitably results in high rates of missing values, which prohibits the integration of larger cohorts as the number of recurrently detected peptides is a limiting factor. Peptide identity propagation (PIP) can mitigate this challenge, allowing to transfer sequencing information between samples. However, despite the promise of these approaches, current methods remain limited either in sensitivity or reliability and there is a lack of robust and widely applicable software. To address this, we here present IceR, an efficient and user-friendly quantification workflow introducing a hybrid PIP approach with superior quantification precision, accuracy, reliability and data completeness. IceR is available as an easy to-use R-package incorporating a graphical user interface and comprehensive quality control measures.
 
+Please consider looking into the `development` branch of the repository for IceR with some more functionality.
+
 ### Installation
 #### Win10
 The following installations are required for Windows 10:

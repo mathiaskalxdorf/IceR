@@ -1319,9 +1319,14 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
                 if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]))
                 {
-                  end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
                   start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]
 
+                  end_indices_temp <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
+                  if (is.na(end_indices_temp)) {
+                    end_indices <- na.omit(allpeptides_frag_indices_per_mz_window[[c]][(end_indices+1):nrow(allpeptides_frag_indices_per_mz_window[[c]]),3])[1]
+                  }else {
+                    end_indices <- end_indices_temp
+                  }
                 }else if(!is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]))
                 {
                   end_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,4]
@@ -1550,9 +1555,14 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
                 if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]))
                 {
-                  end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
                   start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]
 
+                  end_indices_temp <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
+                  if (is.na(end_indices_temp)) {
+                    end_indices <- na.omit(allpeptides_frag_indices_per_mz_window[[c]][(end_indices+1):nrow(allpeptides_frag_indices_per_mz_window[[c]]),3])[1]
+                  }else {
+                    end_indices <- end_indices_temp
+                  }
                 }else if(!is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]))
                 {
                   end_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,4]
@@ -4552,7 +4562,19 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   graphics::smoothScatter(RT_all,x_all,ylab="Intensity, log2",main="All samples - Decoy feature mean intensity",xlab="RT [min]")
 
   ##try to fit an average generalised additive model to determine a RT dependent mean intensity and sd of intensity
-  fit_gam_mean <- mgcv::gam(x_all ~ s(RT_all), method = "REML")
+  ##if not enough data points available, use the average gam
+  gam <- tryCatch({mgcv::gam(x ~ s(RT), method = "REML")}, error = function(error_condition) {
+    #error for current sample. Use data from total data set instead
+    RT <- rep(as.numeric(features_select$RT),ncol(decoy_mean_intensity))
+    x <- as.numeric(as.matrix(decoy_mean_intensity))
+    if (length(which(!is.na(unique(x)))) > 10) {
+      return(mgcv::gam(x ~ s(RT), method = "REML"))
+    } else {
+      warning("Too few decoy ion intensities available. Subsequent statistical evaluations might be wrong.")
+      x <- rnorm(length(RT),mean = 1,sd = 0.1)
+      return(mgcv::gam(x ~ s(RT), method = "REML"))
+    }
+  })
   x_pred <- seq(min(features_select$RT,na.rm=T), max(features_select$RT,na.rm=T), length.out = nrow(features_select))
   y_pred <- stats::predict(fit_gam_mean, base::data.frame(RT_all = x_pred))
   graphics::lines(x_pred,y_pred,col="red")
@@ -5736,8 +5758,15 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   temp_mean_aligned <- temp_mean_aligned[-sel,]
   temp_sd_aligned <- temp_sd_aligned[-sel,]
   grDevices::pdf("Performance of feature alignment.pdf",useDingbats = F)
-  graphics::boxplot(temp_sd_raw$RT,temp_sd_aligned$RT_correct,outline=F,main="Variability of feature RT",names = c("Raw","Aligned"),ylab="SD of RT [min]")
-  graphics::boxplot(temp_sd_raw$mz,temp_sd_aligned$mz_correct,outline=F,main="Variability of feature mz",names = c("Raw","Aligned"),ylab="SD of mz [Da]")
+
+  tryCatch({
+    graphics::boxplot(temp_sd_raw$RT,temp_sd_aligned$RT_correct,outline=F,main="Variability of feature RT",names = c("Raw","Aligned"),ylab="SD of RT [min]")
+    graphics::boxplot(temp_sd_raw$mz,temp_sd_aligned$mz_correct,outline=F,main="Variability of feature mz",names = c("Raw","Aligned"),ylab="SD of mz [Da]")
+  },
+  error=function(cond) {
+    warning(paste("Error while plotting performance of feature alignment. Original message \n",cond))
+  })
+
   grDevices::dev.off()
 
 
