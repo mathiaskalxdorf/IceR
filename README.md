@@ -109,31 +109,31 @@ IceR was so far tested on Windows 10, Ubuntu 20.04.1, and macOS 11.1.0.
 
 The current version of IceR requires raw MS files (from Thermo Mass Spectrometers or from Bruker TIMS-ToF pro) to be preprocessed with MaxQuant (tested for Versions 1.5.1.2, 1.6.12, 1.6.14, and 2.0.3.0, versions in between should work as well). Alternatively, the user can supply preprocessed data from any other pipeline by manually providing the required input data in a predefined format. The data has to be supplied in the following 3 tab-separated txt files:
 
- - features.txt table which containes all information about detected features in the following columns:
-  - Raw.file - Name of the Raw file
-  - Charge - Charge state (e.g. 1, 2, 3)
-  - Mass - Monoisotopic mass of the feature
-  - m.z - Mass to charge ratio of feature
-  - Uncalibrated.m.z - (Optional) Uncalibrated mass to charge ratio of feature
-  - Max.intensity.m.z.0 - (Optional) Mass to charge ratio at which highest intensity of ions was detected, typically m/z which was selected as precursor subsequent MS2
-  - Retention.time - Chromatographic retention time in minutes of feature
-  - Calibrated.retention.time - (Optional) Corrected chromatographic retention time in minutes of feature
-  - Retention.Length - Elution peak width in minutes of feature
-  - Sequence - Observed peptide sequence if feature was sequenced
-  - Modifications - Observed post-translational modification of feature. If unmodified, should be `Unmodified`
-  - Score - Any score value for the spectra to peptide matching with normal distributed scores and higher score representing higher significance
-  - Proteins - Matching protein identifier (e.g. Uniprot ID) if feature was sequenced
-  - MSMS.Scan.Numbers - (Optional) Indices of MSMS spectra which matched to the peptide sequence of feature
-  - Intensity - Extracted feature intensity (raw, unloged) by preprocessing pipeline. Should not be `NA`
+  - features.txt table which containes all information about detected features in the following columns:
+    - Raw.file - Name of the Raw file
+    - Charge - Charge state (e.g. 1, 2, 3)
+    - Mass - Monoisotopic mass of the feature
+    - m.z - Mass to charge ratio of feature
+    - Uncalibrated.m.z - (Optional) Uncalibrated mass to charge ratio of feature
+    - Max.intensity.m.z.0 - (Optional) Mass to charge ratio at which highest intensity of ions was detected, typically m/z which was selected as precursor subsequent MS2
+    - Retention.time - Chromatographic retention time in minutes of feature
+    - Calibrated.retention.time - (Optional) Corrected chromatographic retention time in minutes of feature
+    - Retention.Length - Elution peak width in minutes of feature
+    - Sequence - Observed peptide sequence if feature was sequenced
+    - Modifications - Observed post-translational modification of feature. If unmodified, should be `Unmodified`
+    - Score - Any score value for the spectra to peptide matching with normal distributed scores and higher score representing higher significance
+    - Proteins - Matching protein identifier (e.g. Uniprot ID) if feature was sequenced
+    - MSMS.Scan.Numbers - (Optional) Indices of MSMS spectra which matched to the peptide sequence of feature
+    - Intensity - Extracted feature intensity (raw, unloged) by preprocessing pipeline. Should not be `NA`
 
  - preprocess_quant.txt table which contains peptide-level quantifications observed by preprocessing pipeline in the following columns:
-  - Sequence - Observed peptide sequence
-  - ID - Protein identifier of matching peptide sequence (e.g. Uniprot ID)
-  - Intensity - At least 2 columns containing intensities (in log2) of samples. Column names should start with `Intensity.` followed by the sample name e.g. `Intensity.E3_R1` and `Intensity.E3_R2`. Intensity columns should be ordered by name.
+    - Sequence - Observed peptide sequence
+    - ID - Protein identifier of matching peptide sequence (e.g. Uniprot ID)
+    - Intensity - At least 2 columns containing intensities (in log2) of samples. Column names should start with `Intensity.` followed by the sample name e.g. `Intensity.E3_R1` and `Intensity.E3_R2`. Intensity columns should be ordered by name.
         
  - id_mapping.txt table which contains information for mapping from protein IDs to gene names in the following columns:
-  - ID - Protein identifier (e.g. Uniprot ID)
-  - Gene_Name - Corresponding gene name
+    - ID - Protein identifier (e.g. Uniprot ID)
+    - Gene_Name - Corresponding gene name
 
 
 Important general notes: 
