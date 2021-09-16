@@ -4562,19 +4562,14 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   graphics::smoothScatter(RT_all,x_all,ylab="Intensity, log2",main="All samples - Decoy feature mean intensity",xlab="RT [min]")
 
   ##try to fit an average generalised additive model to determine a RT dependent mean intensity and sd of intensity
-  ##if not enough data points available, use the average gam
-  gam <- tryCatch({mgcv::gam(x ~ s(RT), method = "REML")}, error = function(error_condition) {
-    #error for current sample. Use data from total data set instead
-    RT <- rep(as.numeric(features_select$RT),ncol(decoy_mean_intensity))
-    x <- as.numeric(as.matrix(decoy_mean_intensity))
-    if (length(which(!is.na(unique(x)))) > 10) {
-      return(mgcv::gam(x ~ s(RT), method = "REML"))
-    } else {
-      warning("Too few decoy ion intensities available. Subsequent statistical evaluations might be wrong.")
-      x <- rnorm(length(RT),mean = 1,sd = 0.1)
-      return(mgcv::gam(x ~ s(RT), method = "REML"))
-    }
-  })
+
+  if (length(which(!is.na(unique(x_all)))) > 10) {
+    fit_gam_mean <- mgcv::gam(x_all ~ s(RT_all), method = "REML")
+  } else {
+    warning("Too few decoy ion intensities available. Subsequent statistical evaluations might be wrong.")
+    x_all <- rnorm(length(RT_all),mean = 1,sd = 0.1)
+    fit_gam_mean <- mgcv::gam(x_all ~ s(RT_all), method = "REML")
+  }
   x_pred <- seq(min(features_select$RT,na.rm=T), max(features_select$RT,na.rm=T), length.out = nrow(features_select))
   y_pred <- stats::predict(fit_gam_mean, base::data.frame(RT_all = x_pred))
   graphics::lines(x_pred,y_pred,col="red")
