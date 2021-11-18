@@ -1,3 +1,13 @@
+# IceR 1.2.1
+
+## Fixes
+
+* Added up-front checking that samples were acquired with same gradient lengths. If major differences in gradient lengths are detected, IceR returns an error
+* Added report of observed m/z and RT deviations between samples to console allowing detection if high inconsistencies are present
+* Added warning in case of major deviations in m/z and RT between samples which will hamper reliable results from IceR
+
+---
+
 # IceR 1.2.0
 
 ## New Features

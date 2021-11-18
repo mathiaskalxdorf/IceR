@@ -1291,8 +1291,8 @@ prepare_preprocessed_data <- function(path_to_folder,path_to_output,pipeline=c("
 #' @export
 align_features <- function(path_to_input,path_to_output,preprocess_pipeline="MaxQ",align_unknown=F,output_file_names_add="IceR_analysis",mz_window=NA,min_mz_window = 0.001,RT_window=NA,min_RT_window=1,min_num_ions_collapse=10,feature_mass_deviation_collapse=0.002,only_unmodified_peptides=F,sample_list=NA,remove_contaminants=T,MassSpec_mode=c("Orbitrap","TIMSToF"),IM_window=NA,min_IM_window=0.002,multiplicity=c(1,2,3),SILAC_settings=list(light=c(""),medium=c("Lys4","Arg6"),heavy=c("Lys8","Arg10")))
 {
-  # path_to_input <- "Work\\0_General\\R\\IceR\\GIT_issue_7\\MaxQ"
-  # path_to_output <- "Work\\0_General\\R\\IceR\\GIT_issue_7\\IceR"
+  # path_to_input <- "D:\\Arbeit\\IceR_Github\\Issue_18\\MaxQ"
+  # path_to_output <- "D:\\Arbeit\\IceR_Github\\Issue_18\\IceR"
   # preprocess_pipeline <- "MaxQ"
   # align_unknown=F
   # output_file_names_add="IceR_analysis"
@@ -1418,6 +1418,14 @@ align_features <- function(path_to_input,path_to_output,preprocess_pipeline="Max
       allpeptides <- res$allpeptides
     }
 
+    # check up-front that all samples were measured with comparable gradient lengths
+    max_RTs <- stats::aggregate(allpeptides$Retention.time,by=list(Raw.file = allpeptides$Raw.file),max,na.rm=T)
+    max_RTs_range <- c(round(min(max_RTs$x,na.rm=T),digits = 0),round(max(max_RTs$x,na.rm=T),digits=0))
+    if (max_RTs_range[2] - max_RTs_range[1] > 1) {
+      stop(paste0("Gradient lengths between samples differ too much!!! Minimal observed gradient length: ",max_RTs_range[1],", Maximal observed gradient length: ",max_RTs_range[2],". IceR can only reliably process data acquired with same gradient lengths!!!"))
+    }
+
+    # start processing
     QC_data <- list() ##here relevant qc data is stored and finally saved as RData which can be used for re-generating plots
 
     grDevices::pdf(base::paste("Temporary_files/QC_plots",output_file_names_add,".pdf",sep=""))
@@ -1604,9 +1612,22 @@ align_features <- function(path_to_input,path_to_output,preprocess_pipeline="Max
     windows <- windows[1:count_features,]
 
     #generate some QC plots indicating variation of RT and m/z (and IM) for identified features across samples
-    if(multiplicity == 1)graphics::boxplot(windows$sd_m.z,main="Standard deviation of peptide features m/z",outline=F)
-    graphics::boxplot(windows$sd_RT,main="Standard deviation of peptide features RT",outline=F)
+    if(multiplicity == 1)graphics::boxplot(windows$sd_m.z_uncalibrated,main="Standard deviation of peptide features m/z",outline=F,ylab="StDev of m/z")
+    graphics::boxplot(windows$sd_RT,main="Standard deviation of peptide features RT",outline=F,ylab="StDev of RT [min]")
     if(MassSpec_mode == "TIMSToF")graphics::boxplot(windows$sd_IM,main="Standard deviation of peptide features inverse K0",outline=F)
+
+    #return some values to the console
+    rt_dev <- median(windows$sd_RT,na.rm=T)
+    mz_dev <- median(windows$sd_m.z_uncalibrated,na.rm=T)
+    print(paste0("Median mz-deviation for peptides between samples: ",round(mz_dev,digits = 6)," Da"))
+    print(paste0("Median RT-deviation for peptides between samples: ",round(rt_dev,digits = 2)," min"))
+
+    options(warn=1)
+    if (rt_dev > 1) warning("Median RT-deviation between samples is larger than 1 min which could indicate that chromatography is not stable. IceR might not be able to process the data correctly!!!")
+    if (mz_dev > 0.01) warning("Median m/z-deviation between samples is larger than 0.01 Da which could indicate that Mass analyzer is not stable. IceR might not be able to process the data correctly!!!")
+    options(warn=-1)
+
+    #define windows
     if(is.na(mz_window))
     {
       ###based on boxplots
@@ -4254,9 +4275,9 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
 #' Intermediate results of the function are stored in RData files.
 requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,feature_table_file_name="Features_aligned_merged_IceR_analysis.txt",output_file_names_add="IceR_analysis",RT_calibration=T,mz_calibration=T,abundance_estimation_correction = T,Quant_pVal_cut=0.05,n_cores=2,kde_resolution = 50,num_peaks_store = 5,plot_peak_detection=F,alignment_variability_score_cutoff=0.05,alignment_scores_cutoff=0.05,mono_iso_alignment_cutoff=0.05,calc_peptide_LFQ=F,calc_protein_LFQ=T,MassSpec_mode=c("Orbitrap","TIMSToF"),use_IM_data = T,path_to_extracted_spectra=NA)
 {
-  # path_to_features <- "Work\\0_General\\R\\IceR\\Example\\IceR"
-  # path_to_mzXML <- "Work\\0_General\\R\\IceR\\Example\\raw\\mzXML"
-  # path_to_input <- "Work\\0_General\\R\\IceR\\Example\\MaxQ"
+  # path_to_features <- "D:\\Arbeit\\IceR_Github\\Issue_18\\IceR"
+  # path_to_mzXML <- "D:\\Arbeit\\IceR_Github\\Issue_18\\raw\\mzXML"
+  # path_to_input <- "D:\\Arbeit\\IceR_Github\\Issue_18\\MaxQ"
   # feature_table_file_name="Features_aligned_merged_IceR_analysis.txt"
   # output_file_names_add="IceR_analysis"
   # RT_calibration=T
