@@ -829,6 +829,13 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       save(evidence,file = "Temporary_files/evidence.RData")
     }
 
+    # check up-front that all samples were measured with comparable gradient lengths
+    max_RTs <- stats::aggregate(allpeptides$Retention.time,by=list(Raw.file = allpeptides$Raw.file),max,na.rm=T)
+    max_RTs_range <- c(round(min(max_RTs$x,na.rm=T),digits = 0),round(max(max_RTs$x,na.rm=T),digits=0))
+    if (max_RTs_range[2] - max_RTs_range[1] > 1) {
+      stop(paste0("Gradient lengths between samples differ too much!!! Minimal observed gradient length: ",max_RTs_range[1],", Maximal observed gradient length: ",max_RTs_range[2],". IceR can only reliably process data acquired with same gradient lengths!!!"))
+    }
+
     QC_data <- list() ##here relevant qc data is stored and finally saved as RData which can be used for re-generating plots
 
     grDevices::pdf(base::paste("Temporary_files/QC_plots",output_file_names_add,".pdf",sep=""))
@@ -998,8 +1005,21 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     windows <- windows[1:count_features,]
 
     #generate some QC plots indicating variation of RT and m/z (and IM) for identified features across samples
-    graphics::boxplot(windows$sd_m.z,main="Standard deviation of peptide features m/z",outline=F)
-    graphics::boxplot(windows$sd_RT,main="Standard deviation of peptide features RT",outline=F)
+    graphics::boxplot(windows$sd_m.z_uncalibrated,main="Standard deviation of peptide features m/z",outline=F,ylab="StDev of m/z [Da]")
+    graphics::boxplot(windows$sd_RT,main="Standard deviation of peptide features RT",outline=F,ylab="StDev of RT [min]")
+
+    #return some values to the console
+    rt_dev <- median(windows$sd_RT,na.rm=T)
+    mz_dev <- median(windows$sd_m.z_uncalibrated,na.rm=T)
+    print(paste0("Median mz-deviation for peptides between samples: ",round(mz_dev,digits = 6)," Da"))
+    print(paste0("Median RT-deviation for peptides between samples: ",round(rt_dev,digits = 2)," min"))
+
+    options(warn=1)
+    if (rt_dev > 1) warning("Median RT-deviation between samples is larger than 1 min which could indicate that chromatography is not stable. IceR might not be able to process the data correctly!!!")
+    if (mz_dev > 0.01) warning("Median m/z-deviation between samples is larger than 0.01 Da which could indicate that Mass analyzer is not stable. IceR might not be able to process the data correctly!!!")
+    options(warn=-1)
+
+
     if(MassSpec_mode == "TIMSToF")graphics::boxplot(windows$sd_IM,main="Standard deviation of peptide features inverse K0",outline=F)
     if(is.na(mz_window))
     {
