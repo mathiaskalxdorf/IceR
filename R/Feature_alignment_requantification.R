@@ -529,7 +529,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     {
       setwd(path_to_MaxQ_output)
       options(fftempdir = path_to_MaxQ_output)
-      print("Read MaxQ results")
+      print(paste0(Sys.time()," Read MaxQ results"))
       temp <- utils::read.csv(file = "allPeptides.txt",sep='\t',nrows = 2044,header=T)
       tempclasses = sapply(temp, class)
       if(MassSpec_mode == "Orbitrap")
@@ -616,7 +616,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       if(any(colnames(evidence) == "Ion.mobility.length"))colnames(evidence)[which(colnames(evidence) == "Ion.mobility.length")] <- "Ion.mobility.index.length"
       if(any(colnames(evidence) == "Number.of.scans"))colnames(evidence)[which(colnames(evidence) == "Number.of.scans")] <- "Number.of.frames"
 
-      print("Read MaxQ results finished")
+      print(paste0(Sys.time()," Read MaxQ results finished"))
 
       if(MassSpec_mode == "Orbitrap")
       {
@@ -715,6 +715,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
       temp$Calibrated.retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")] <- temp$Retention.time[which(is.na(temp$Calibrated.retention.time) & temp$Sequence != " " & temp$Sequence != "")]
       allpeptides <- temp
 
+      print(paste0(Sys.time()," Determine deviations of m/z from truth"))
 
       #determine isotope corrected m/z
       if(MassSpec_mode == "Orbitrap")
@@ -909,6 +910,8 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
     ###remove outlier samples where RT of a peptide is very different from all other samples
     outlier_RT_deviation <- (max(allpeptides$Retention.time,na.rm=T)/100)*5 ###deviation should not be larger than 5 % of the total chromatographic retention length
+
+    print(paste0(Sys.time()," Determine matching parameter windows"))
 
     max <- length(unique_peptides)
     pb <- tcltk::tkProgressBar(title = "Determine matching parameter windows",label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
@@ -1175,7 +1178,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
     allpeptides$Raw.file <- as.character(allpeptides$Raw.file)
     ###presubset all ions based on charge, here use only rows of allions which are coming from samples which should be also used
     ####also create a library of ions per charge state per mz_window of 0.5 Da
-    print("Prepare for peptide feature matching - Indexing all ions")
+    print(paste0(Sys.time()," Prepare for peptide feature matching - Indexing all ions"))
     rownames(allpeptides) <- c(1:nrow(allpeptides))
     allpeptides_frag <- list()
     allpeptides_frag_indices_per_mz_window <- list()
@@ -2454,7 +2457,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
           temp_data$Resolution <- 0
         }
 
-        print("Train RF models for mz-corrections")
+        print(paste0(Sys.time()," Train RF models for mz-corrections"))
         for(s in sample_list)
         {
           selec_rows <- which(temp_data$Raw.file == s)
@@ -2787,14 +2790,14 @@ add_isotope_features <- function(path_to_features,feature_table_file_name="Featu
       isotope_features$Feature_name <- base::paste(isotope_features$Feature_name,"_i",sep="")
       features <- rbind(features,isotope_features)
       utils::write.table(features,base::paste("Temporary_files/",feature_table_file_name,sep=""),row.names = F)
-      print(base::paste("Added",nrow(isotope_features),"isotope features."))
+      print(paste0(Sys.time()," Added ",nrow(isotope_features)," isotope features."))
     }else
     {
-      print(base::paste("None of the peptides was observed in at least",min_observations,"samples. No isotope features were added."))
+      print(base::paste(Sys.time()," None of the peptides was observed in at least",min_observations,"samples. No isotope features were added."))
     }
   }else
   {
-    print("Isotope features were already added")
+    print(paste0(Sys.time()," Isotope features were already added"))
   }
 }
 
@@ -4513,12 +4516,13 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   {
     indx <- which(samples %in% available)
     options(warn=1)
-    warning(paste0("Decoy intensities were already extracted for ",paste(samples[indx],collapse=",")," and will be used for subsequent IceR steps. If this is unintended because raw files, MaxQuant results, or IceR parameters were changed, please stop IceR now, delete the folder ",paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep="")," and restart IceR. Consider removing ",paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep="")," as well. If any of the previously mentioned changes were made, please consider removing the complete Temporary_files folder to enable a fresh run of IceR or at least Quantification_raw_results.RData."))
+    warning(paste0(Sys.time()," Decoy intensities were already extracted for ",paste(samples[indx],collapse=",")," and will be used for subsequent IceR steps. If this is unintended because raw files, MaxQuant results, or IceR parameters were changed, please stop IceR now, delete the folder ",paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep="")," and restart IceR. Consider removing ",paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep="")," as well. If any of the previously mentioned changes were made, please consider removing the complete Temporary_files folder to enable a fresh run of IceR or at least Quantification_raw_results.RData."))
     options(warn=-1)
   }
 
   if(length(which(samples %not in% available))>0)
   {
+    print(paste0(Sys.time()," Extract decoy intensities"))
     selected_decoys <- which(grepl("_d",features$Feature_name))
 
     samples <- samples[which(samples %not in% available)]
@@ -4533,6 +4537,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
                                n_cores=ifelse(MassSpec_mode == "Orbitrap",n_cores,ifelse(n_cores >= 3,3,n_cores)),
                                MassSpec_mode = MassSpec_mode,
                                use_IM_data=use_IM_data)
+    print(paste0(Sys.time()," Extract decoy intensities finished"))
   }
 
   ###determine distribution of background ion intensities
@@ -4573,6 +4578,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   }
 
   ###plot general numbers of quantifications of decoy features
+  print(paste0(Sys.time()," Fit decoy models"))
   setwd(path_to_features)
   grDevices::pdf("Temporary_files/Decoy feature quantification parameters.pdf")
 
@@ -4744,12 +4750,13 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   {
     indx <- which(samples %in% available)
     options(warn=1)
-    warning(paste0("Feature intensities were already extracted for ",paste(samples[indx],collapse=",")," and will be used for subsequent IceR steps. If this is unintended because raw files, MaxQuant results, or IceR parameters were changed, please stop IceR now, delete the folder ",paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep="")," and restart IceR. If any of the previously mentioned changes were made, please consider removing the complete Temporary_files folder to enable a fresh run of IceR or at least Quantification_raw_results.RData."))
+    warning(paste0(Sys.time()," Feature intensities were already extracted for ",paste(samples[indx],collapse=",")," and will be used for subsequent IceR steps. If this is unintended because raw files, MaxQuant results, or IceR parameters were changed, please stop IceR now, delete the folder ",paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep="")," and restart IceR. If any of the previously mentioned changes were made, please consider removing the complete Temporary_files folder to enable a fresh run of IceR or at least Quantification_raw_results.RData."))
     options(warn=-1)
   }
 
   if(length(which(samples %not in% available))>0)
   {
+    print(paste0(Sys.time()," Perform peak detection"))
     samples <- samples[which(samples %not in% available)]
     ##use decoy defined cut of to distinguish background intensity from signal intensity per feature
     extract_intensities_worker(Sample_IDs = as.character(samples),
@@ -4769,6 +4776,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
                                plots = plot_peak_detection,
                                MassSpec_mode = MassSpec_mode,
                                use_IM_data=use_IM_data) ###define background peaks during 2DKDE as peaks with <= 75% quantile
+    print(paste0(Sys.time()," Peak detection finished"))
   }
 
   #####Summarize data for all features and samples
@@ -4924,6 +4932,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     crap <- gc(F)
   }else
   {
+    print(paste0(Sys.time()," Perform peak selection"))
     ###if no peak detection was done, directly continue
     ###otherwise select per feature best peak
     if(peak_detection == T)
@@ -5050,6 +5059,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       peak_selected <- NULL
     }
 
+    print(paste0(Sys.time()," Peak selection finished"))
+
     rownames(features_intensity) <- features$Feature_name
     rownames(Ioncount_feature_sample_matrix) <- features$Feature_name
     rownames(feature_with_background_intensity) <- features$Feature_name
@@ -5058,7 +5069,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     setwd(path_to_features)
     dir.create("Temporary_files")
     setwd(base::paste(path_to_features,"/Temporary_files",sep=""))
-    print("Save peak detection and selection results")
+    print(paste0(Sys.time()," Save peak detection and selection results"))
     save(features,
          features_intensity,
          Ioncount_feature_sample_matrix,
@@ -5091,6 +5102,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
   ###read previously generated outputs
   #load("Quantification_raw_results.RData")
+  print(paste0(Sys.time()," Perform scoring of alignment and quantification"))
 
   setwd(path_to_features)
 
@@ -5649,6 +5661,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
   grDevices::dev.off()
 
+  print(paste0(Sys.time()," Finished scoring of alignment and quantification"))
+
   ###function to plot peak selections
   # Plot_feature_quantification <- function(path_to_graph_data,features,selected_feature,samples,peaks,num_peaks_store)
   # {
@@ -5786,8 +5800,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
 
 
   ###Save temporary results
-  print("Save quantification results after alignment scoring")
-
+  print(paste0(Sys.time()," Save quantification results after alignment scoring"))
   temp_results <- list(features=features,
                        features_intensity=features_intensity,
                        Ioncount_feature_sample_matrix=Ioncount_feature_sample_matrix,
@@ -5857,7 +5870,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     alignment_scores_peaks_correct<-alignment_scores_peaks_correct[-selection,]
     alignment_scores_peaks_raw<-alignment_scores_peaks_raw[-selection,]
     if(any(!is.na(mono_iso_alignment_summary)))mono_iso_alignment_summary<-mono_iso_alignment_summary[-selection,]
-    print(base::paste("Removed ",length(selection)," isotope features (",round(length(selection)/total_length*100,digits=1)," %) as they dont show significant ion accumulation in any sample.",sep=""))
+    print(base::paste(Sys.time(),"Removed ",length(selection)," isotope features (",round(length(selection)/total_length*100,digits=1)," %) as they dont show significant ion accumulation in any sample.",sep=""))
   }
 
   ####impute missing values based on generalized additive model
@@ -5890,7 +5903,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   selection <- rownames(alignment_variability_score)[which(matrixStats::rowMins(as.matrix(alignment_variability_score),na.rm=T) < alignment_variability_score_cutoff)]
   if(length(selection)>0)
   {
-    print(base::paste("Removed ",length(which(!grepl("_i",selection)))," (",length(which(grepl("_i",selection)))," isotope)"," features from quantification results due to too high variability in alignment between samples.",sep=""))
+    print(base::paste(Sys.time(),"Removed ",length(which(!grepl("_i",selection)))," (",length(which(grepl("_i",selection)))," isotope)"," features from quantification results due to too high variability in alignment between samples.",sep=""))
 
     selection <- match(selection,features$Feature_name)
 
@@ -5953,14 +5966,12 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     }
   }
 
-
   #calculate fraction of missing values before and after imputation
   total <- nrow(feature_with_background_intensity)*ncol(feature_with_background_intensity)
   missing <- length(which(is.na(as.numeric(as.matrix(feature_with_background_intensity)))))
-  print(base::paste("Quantification without imputation: ",round(missing/total*100,digits=1)," % missing values",sep=""))
+  print(base::paste(Sys.time(),"Quantification without imputation: ",round(missing/total*100,digits=1)," % missing values",sep=""))
   missing <- length(which(is.na(as.numeric(as.matrix(feature_with_background_intensity_imputed)))))
-  print(base::paste("Quantification with imputation: ",round(missing/total*100,digits=1)," % missing values",sep=""))
-
+  print(base::paste(Sys.time(),"Quantification with imputation: ",round(missing/total*100,digits=1)," % missing values",sep=""))
 
   ####If features contain PMPs (potentially missed peptides) then evaluate now which of them are correlating (spearman, rank) in abundance to the other peptides of the same proteins
   # if(any(grepl("_pmp",features$Feature_name)))
@@ -6095,7 +6106,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   #
 
   ###store results after filtering
-  print("Save quantification results after alignment scoring and filter")
+  print(paste0(Sys.time()," Save quantification results after alignment scoring and filter"))
 
   temp_results <- list(features=features,
                        features_intensity=features_intensity,
@@ -6673,6 +6684,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
   ###perform protein level aggregation
   if(!is.null(path_to_MaxQ_output))
   {
+    print(paste0(Sys.time()," Perform protein-level aggregation"))
+
     ###load MaxQ peptide results
     MaxQ_peptides <- utils::read.table(base::paste(path_to_MaxQ_output,"/peptides.txt",sep=""),sep="\t",header=T)
     MaxQ_peptides <- MaxQ_peptides[-which(MaxQ_peptides$Potential.contaminant == "+" | MaxQ_peptides$Reverse == "+"),]
@@ -6688,10 +6701,10 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     ###check if IDs were correctly parsed, if not, try to parse with SwissProt or Trembl
     if(!any(colnames(MaxQ_protein_groups) == "Gene.names") & any(colnames(MaxQ_protein_groups) == "Protein.IDs")) ##not correctly parsed but contains trembl or swissprot fasta headers
     {
-      print("Fasta file was not correctly parsed during search. Try to base::paste fasta headers ...")
+      print(paste0(Sys.time()," Fasta file was not correctly parsed during search. Try to base::paste fasta headers ..."))
       if(any(grepl(">sp|>tr",MaxQ_protein_groups$Fasta.headers)))
       {
-        print("Detected Swiss-Prot and/or TrEMBL fasta headers.")
+        print(paste0(Sys.time()," Detected Swiss-Prot and/or TrEMBL fasta headers."))
         ##protein level
         ###parsing was not performed correctly so we have to try to do this here expecting swissprot or trembl fasta headers
         MaxQ_protein_groups$Gene.names <- ""
@@ -6758,7 +6771,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
         features$Protein <- ID
       }else
       {
-        print("No supported fasta headers were detected. Next steps might be not fully working.")
+        print(paste0(Sys.time()," No supported fasta headers were detected. Next steps might be not fully working."))
       }
     }
 
@@ -7568,11 +7581,16 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       utils::write.table(x = LFQ_peptide_quant_with_background,file = base::paste(path_to_features,"/Peptides_quantification_LFQ",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
       utils::write.table(x = LFQ_peptide_quant_with_background_imputed,file = base::paste(path_to_features,"/Peptides_quantification_LFQ_imputed",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
     }
+
+    print(paste0(Sys.time()," Protein-level aggregation finished"))
+
   }
 
   setwd(path_to_features)
 
   ###finally save feature level quantification
+  print(paste0(Sys.time()," Store all results"))
+
   utils::write.table(x = features,file = base::paste(path_to_features,"/Features",output_file_names_add,".tab",sep=""),row.names = F,sep = "\t")
   utils::write.table(x = feature_with_background_intensity,file = base::paste(path_to_features,"/Features_quantification",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")
   utils::write.table(x = feature_with_background_intensity_imputed,file = base::paste(path_to_features,"/Features_quantification_imputed",output_file_names_add,".tab",sep=""),row.names = T,sep = "\t")

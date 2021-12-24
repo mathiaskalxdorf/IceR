@@ -258,7 +258,9 @@ run_all_processes <- function(settings_list)
 
   withProgress(message = '',min=0,max=max_steps, {
 
-    print(paste(Sys.time(),"Job started"))
+    print(paste0(Sys.time()," Job started (IceR: ",packageVersion("IceR"),")"))
+    print(R.version)
+
     ###Save all parameters
     setProgress(cur_step,message="Prepare settings and parameters")
 

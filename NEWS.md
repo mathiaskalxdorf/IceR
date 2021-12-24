@@ -1,3 +1,11 @@
+# IceR 0.9.13
+
+## Fixes
+
+* Added additional console prints for better monitoring progress of IceR
+
+---
+
 # IceR 0.9.12
 
 ## Fixes
