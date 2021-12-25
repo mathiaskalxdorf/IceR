@@ -1,3 +1,11 @@
+# IceR 1.2.2
+
+## Fixes
+
+* Added additional console prints for better monitoring progress of IceR
+
+---
+
 # IceR 1.2.1
 
 ## Fixes
