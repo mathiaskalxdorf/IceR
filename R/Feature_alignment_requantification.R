@@ -247,7 +247,7 @@ convert_rawTIMS <- function(path_to_raw=NULL)
       }
     }
     #now read individual spectra
-    print(base::paste(base::gsub(".txt","",filename),": Prepare TIMS-ToF data",sep=""))
+    print(base::paste(base::gsub("\\.txt","",filename),": Prepare TIMS-ToF data",sep=""))
     pb <- utils::txtProgressBar(min = 0,max = n_spectra,style = 3)
     for(i in 1:n_spectra)
     {
@@ -304,7 +304,7 @@ convert_rawTIMS <- function(path_to_raw=NULL)
     table_store$mz <- as.numeric(table_store$mz)
     table_store$int <- as.numeric(table_store$int)
     counter <- 1
-    print(base::paste(base::gsub(".txt","",filename),": Finalize conversion of TIMS-ToF data",sep=""))
+    print(base::paste(base::gsub("\\.txt","",filename),": Finalize conversion of TIMS-ToF data",sep=""))
     pb <- utils::txtProgressBar(min = 0,max = nrow(spectra),style = 3)
     for(i in 1:nrow(spectra))
     {
@@ -322,8 +322,8 @@ convert_rawTIMS <- function(path_to_raw=NULL)
     }
     close(pb)
     dir.create(base::paste(path,"all_ion_lists",sep=""),showWarnings = F)
-    print(base::paste(base::gsub(".txt","",filename),": Store extracted spectra data",sep=""))
-    save(table_store,file = base::paste(path,"all_ion_lists/",base::gsub(".txt","_all_ions.RData",filename),sep=""))
+    print(base::paste(base::gsub("\\.txt","",filename),": Store extracted spectra data",sep=""))
+    save(table_store,file = base::paste(path,"all_ion_lists/",base::gsub("\\.txt","_all_ions.RData",filename),sep=""))
 
     rm(spectra,table_store)
     gc()
@@ -413,7 +413,7 @@ convert_rawTIMS <- function(path_to_raw=NULL)
                    " -c ",temp_path,"\\config.txt",sep="")
 
       ###run msconvert
-      if(file.exists(base::paste(temp_path,"\\temp\\",base::gsub(".d",".txt",files_to_be_converted[i]),sep="")) == F)#check if file is already converted to raw text
+      if(file.exists(base::paste(temp_path,"\\temp\\",base::gsub("\\.d",".txt",files_to_be_converted[i]),sep="")) == F)#check if file is already converted to raw text
       {#if not use msconvert
         system2(path_to_msconvert, args = arg)
       }else
@@ -422,9 +422,9 @@ convert_rawTIMS <- function(path_to_raw=NULL)
       }
 
       ###when finished, trigger conversion into spectra RData file
-      if(file.exists(base::paste(temp_path,"\\temp\\all_ion_lists\\",base::gsub(".d","_all_ions.RData",files_to_be_converted[i]),sep="")) == F)#check if file is already converted to raw text
+      if(file.exists(base::paste(temp_path,"\\temp\\all_ion_lists\\",base::gsub("\\.d","_all_ions.RData",files_to_be_converted[i]),sep="")) == F)#check if file is already converted to raw text
       {#if not use msconvert
-        extract_spectra(path = base::paste(temp_path,"\\temp\\",sep=""),filename = base::gsub(".d",".txt",files_to_be_converted[i]))
+        extract_spectra(path = base::paste(temp_path,"\\temp\\",sep=""),filename = base::gsub("\\.d",".txt",files_to_be_converted[i]))
       }else
       {
         print("Spectra were already extracted")
@@ -441,7 +441,7 @@ convert_rawTIMS <- function(path_to_raw=NULL)
       f <- base::gsub("\\.d","_all_ions.RData",files_to_be_converted[i])
       r <- ff::file.move(base::paste(path1,"\\",f,sep=""),path2)
       #remove raw txt file
-      r <- file.remove(base::paste(temp_path,"\\temp\\",base::gsub(".d",".txt",files_to_be_converted[i]),sep=""))
+      r <- file.remove(base::paste(temp_path,"\\temp\\",base::gsub("\\.d",".txt",files_to_be_converted[i]),sep=""))
 
     }
   }else
