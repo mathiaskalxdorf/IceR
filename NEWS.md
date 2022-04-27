@@ -1,3 +1,11 @@
+# IceR 0.9.14
+
+## Fixes
+
+* Fixed regex issue for raw filenames with specific substrings
+
+---
+
 # IceR 0.9.13
 
 ## Fixes
