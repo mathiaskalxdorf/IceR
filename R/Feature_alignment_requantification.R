@@ -1007,23 +1007,33 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
     windows <- windows[1:count_features,]
 
-    #generate some QC plots indicating variation of RT and m/z (and IM) for identified features across samples
-    graphics::boxplot(windows$sd_m.z_uncalibrated,main="Standard deviation of peptide features m/z",outline=F,ylab="StDev of m/z [Da]")
-    graphics::boxplot(windows$sd_RT,main="Standard deviation of peptide features RT",outline=F,ylab="StDev of RT [min]")
+    if(MassSpec_mode == "Orbitrap")
+    {
+      #generate some QC plots indicating variation of RT and m/z (and IM) for identified features across samples
+      graphics::boxplot(windows$sd_m.z_uncalibrated,main="Standard deviation of peptide features m/z",outline=F,ylab="StDev of m/z [Da]")
+      graphics::boxplot(windows$sd_RT,main="Standard deviation of peptide features RT",outline=F,ylab="StDev of RT [min]")
 
-    #return some values to the console
-    rt_dev <- median(windows$sd_RT,na.rm=T)
-    mz_dev <- median(windows$sd_m.z_uncalibrated,na.rm=T)
-    print(paste0("Median mz-deviation for peptides between samples: ",round(mz_dev,digits = 6)," Da"))
-    print(paste0("Median RT-deviation for peptides between samples: ",round(rt_dev,digits = 2)," min"))
+      #return some values to the console
+      rt_dev <- median(windows$sd_RT,na.rm=T)
+      mz_dev <- median(windows$sd_m.z_uncalibrated,na.rm=T)
+
+      print(paste0("Median mz-deviation for peptides between samples: ",round(mz_dev,digits = 6)," Da"))
+      print(paste0("Median RT-deviation for peptides between samples: ",round(rt_dev,digits = 2)," min"))
+    } else if (MassSpec_mode == "TIMSToF")
+    {
+      graphics::boxplot(windows$sd_RT,main="Standard deviation of peptide features RT",outline=F,ylab="StDev of RT [min]")
+      graphics::boxplot(windows$sd_IM,main="Standard deviation of peptide features inverse K0",outline=F)
+      rt_dev <- median(windows$sd_RT,na.rm=T)
+      mz_dev <- 0
+
+      print(paste0("Median RT-deviation for peptides between samples: ",round(rt_dev,digits = 2)," min"))
+    }
 
     options(warn=1)
     if (rt_dev > 1) warning("Median RT-deviation between samples is larger than 1 min which could indicate that chromatography is not stable. IceR might not be able to process the data correctly!!!")
     if (mz_dev > 0.01) warning("Median m/z-deviation between samples is larger than 0.01 Da which could indicate that Mass analyzer is not stable. IceR might not be able to process the data correctly!!!")
     options(warn=-1)
 
-
-    if(MassSpec_mode == "TIMSToF")graphics::boxplot(windows$sd_IM,main="Standard deviation of peptide features inverse K0",outline=F)
     if(is.na(mz_window))
     {
       ###based on boxplots
@@ -1100,7 +1110,6 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
 
     if(MassSpec_mode == "Orbitrap")QC_data[["Feature_alignment_windows"]] <- list(RT_window=borders_RT,mz_window=borders_m.z)
     if(MassSpec_mode == "TIMSToF")QC_data[["Feature_alignment_windows"]] <- list(RT_window=borders_RT,mz_window=borders_m.z,IM_window=borders_IM)
-
 
     ###determine for how many windows we expect an overlap of ions for different peptide sequences based on the chosen parameters
     windows <- windows[order(windows$mean_m.z),]
