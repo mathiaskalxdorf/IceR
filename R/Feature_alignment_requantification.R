@@ -1618,13 +1618,15 @@ align_features <- function(path_to_input,path_to_output,preprocess_pipeline="Max
     windows <- windows[1:count_features,]
 
     #generate some QC plots indicating variation of RT and m/z (and IM) for identified features across samples
-    if(multiplicity == 1)graphics::boxplot(windows$sd_m.z_uncalibrated,main="Standard deviation of peptide features m/z",outline=F,ylab="StDev of m/z")
+    if(multiplicity == 1 & MassSpec_mode == "Orbitrap")graphics::boxplot(windows$sd_m.z_uncalibrated,main="Standard deviation of peptide features m/z",outline=F,ylab="StDev of m/z")
     graphics::boxplot(windows$sd_RT,main="Standard deviation of peptide features RT",outline=F,ylab="StDev of RT [min]")
     if(MassSpec_mode == "TIMSToF")graphics::boxplot(windows$sd_IM,main="Standard deviation of peptide features inverse K0",outline=F)
 
     #return some values to the console
     rt_dev <- median(windows$sd_RT,na.rm=T)
     mz_dev <- median(windows$sd_m.z_uncalibrated,na.rm=T)
+    if (is.na(rt_dev)) rt_dev <- 0
+    if (is.na(mz_dev)) mz_dev <- 0
     print(paste0("Median mz-deviation for peptides between samples: ",round(mz_dev,digits = 6)," Da"))
     print(paste0("Median RT-deviation for peptides between samples: ",round(rt_dev,digits = 2)," min"))
 
@@ -1949,249 +1951,251 @@ align_features <- function(path_to_input,path_to_output,preprocess_pipeline="Max
         last_index <- last_index + number_of_rows_per_peptide_sequence[i,2]
         sub_peptide <- sub_peptide[which(sub_peptide$Sequence == unique_peptides[i]),]
 
-        for(c in unique(sub_peptide$Charge))
-        {
-          for(m in unique(sub_peptide$Modifications))
+        tryCatch({
+          for(c in unique(sub_peptide$Charge))
           {
-            sub <- sub_peptide[which(sub_peptide$Charge == c & sub_peptide$Modifications == m),]
-            if(nrow(sub) > 0)
+            for(m in unique(sub_peptide$Modifications))
             {
-              sub <- sub[base::order(sub$Intensity,decreasing = T),]
-
-              ###only use features close to median feature over all samples for this peptide
-              median_m.z <- stats::median(sub$m.z,na.rm=T)##
-              median_RT <- stats::median(sub$Retention.time,na.rm=T)
-              selection <- which(abs(sub$Retention.time-median_RT) < borders_RT[2] & abs(sub$m.z-median_m.z) < borders_m.z[2])
-              sub <- sub[selection,]
-
+              sub <- sub_peptide[which(sub_peptide$Charge == c & sub_peptide$Modifications == m),]
               if(nrow(sub) > 0)
               {
-                ###check if peptide was sequenced several times. If this is the case, use feature closest to median
-                if(any(duplicated(sub$Raw.file)))
-                {
-                  sub <- sub[!duplicated(sub$Raw.file),]
-                }
+                sub <- sub[base::order(sub$Intensity,decreasing = T),]
 
+                ###only use features close to median feature over all samples for this peptide
                 median_m.z <- stats::median(sub$m.z,na.rm=T)##
                 median_RT <- stats::median(sub$Retention.time,na.rm=T)
-
-                RT_max_min <- max(sub$Retention.time,na.rm=T) - min(sub$Retention.time,na.rm=T)
-                too_large_RT_variation <- F
-
-                ###get subset of allpeptides based on charge and mz window indexing
-                start_indices <- which(allpeptides_frag_indices_per_mz_window[[c]][,1] > median_m.z + borders_m.z[1])[1] - 1
-                end_indices <- which(allpeptides_frag_indices_per_mz_window[[c]][,2] > median_m.z + borders_m.z[2])[1] + 1
-
-                if(is.na(end_indices) | end_indices > nrow(allpeptides_frag_indices_per_mz_window[[c]]))end_indices <- nrow(allpeptides_frag_indices_per_mz_window[[c]])
-
-                if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]))
-                {
-                  start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]
-
-                  end_indices_temp <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
-                  if (is.na(end_indices_temp)) {
-                    end_indices <- na.omit(allpeptides_frag_indices_per_mz_window[[c]][(end_indices+1):nrow(allpeptides_frag_indices_per_mz_window[[c]]),3])[1]
-                  }else {
-                    end_indices <- end_indices_temp
-                  }
-                }else if(!is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]))
-                {
-                  end_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,4]
-                  start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]
-                }else if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,3]))
-                {
-                  start_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,3]
-                  end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
-                }else
-                {
-                  start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]
-                  end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
-                }
-
-                temp_sub <- allpeptides_frag[[c]][start_indices:end_indices,]
-                sub <- temp_sub[which(temp_sub$m.z >= median_m.z + borders_m.z[1] & temp_sub$m.z <= median_m.z + borders_m.z[2] & temp_sub$Retention.time >= median_RT + borders_RT[1] & temp_sub$Retention.time <= median_RT + borders_RT[2] | temp_sub$Sequence == unique_peptides[i] & temp_sub$Charge == c & temp_sub$Modifications == m),]
-
-                sub <- sub[order(sub$Intensity,sub$Sequence,decreasing = T),]
-
-                ###check if selected MaxQ features in expected RT and mz window contains outliers (too high deviation in RT or mz compared to all other features)
-                box_stats_rt <- grDevices::boxplot.stats(sub$Retention.time)$stats
-                box_stats_mz <- grDevices::boxplot.stats(sub$m.z)$stats
-                outlier <- which(sub$Retention.time < box_stats_rt[2] | sub$Retention.time > box_stats_rt[4] | sub$m.z < box_stats_mz[2] | sub$m.z > box_stats_mz[4])
-                #features with sequence identification will be never regarded as outlier
-                if(any(sub$Sequence[outlier] == unique_peptides[i]))
-                {
-                  outlier <- outlier[-which(sub$Sequence[outlier] == unique_peptides[i])]
-                }
-                if(length(outlier)>0) ###any outlier detected? exclude them
-                {
-                  sub <- sub[-outlier,]
-                }
-
-                ###check if the fraction of features with not currently searched sequence is > 25 %
-                ###if yes, keep all sequences and indicate this with multiple sequences for this feature otherwise remove other sequences
-                count_sequences <- plyr::count(sub$Sequence[which(sub$Sequence != " " & sub$Sequence != "")])
-                if(count_sequences$freq[which(count_sequences$x == unique_peptides[i])] >= 0.8*sum(count_sequences$freq))
-                {
-                  sub <- sub[which(sub$Sequence == unique_peptides[i] | sub$Sequence == " " | sub$Sequence == ""),]
-                }
-
-                if(any(duplicated(sub$Raw.file)))
-                {
-                  sub <- sub[!duplicated(sub$Raw.file),]
-                }
-
-                if(nrow(sub) == 0) ###variation in RT for same peptide sequence between samples is too high
-                {
-                  borders_RT_save <- borders_RT
-                  too_large_RT_variation <- T
-                  borders_RT <- c(-RT_max_min/2,RT_max_min/2)
-                  sub <- temp_sub[which(temp_sub$m.z >= median_m.z + borders_m.z[1] & temp_sub$m.z <= median_m.z + borders_m.z[2] & temp_sub$Retention.time >= median_RT + borders_RT[1] & temp_sub$Retention.time <= median_RT + borders_RT[2]),]
-                  if(nrow(sub) == 0)###still no match
-                  {
-                    too_large_RT_variation <- F
-                    borders_RT <- borders_RT_save
-                  }
-                }
+                selection <- which(abs(sub$Retention.time-median_RT) < borders_RT[2] & abs(sub$m.z-median_m.z) < borders_m.z[2])
+                sub <- sub[selection,]
 
                 if(nrow(sub) > 0)
                 {
-                  count_features <- count_features + 1
-
-                  ###new feature - give a new name
-                  name <- base::paste("Feature",count_features,sep="_")
-
-                  sequences_relevant <- which(nchar(as.character(sub$Sequence)) > 1)
-                  if(length(sequences_relevant) > 0)
+                  ###check if peptide was sequenced several times. If this is the case, use feature closest to median
+                  if(any(duplicated(sub$Raw.file)))
                   {
-                    sequence <- base::paste(unique(c(sub_peptide$Sequence[1],sub[sequences_relevant,"Sequence"])),collapse=";")
+                    sub <- sub[!duplicated(sub$Raw.file),]
+                  }
+
+                  median_m.z <- stats::median(sub$m.z,na.rm=T)##
+                  median_RT <- stats::median(sub$Retention.time,na.rm=T)
+
+                  RT_max_min <- max(sub$Retention.time,na.rm=T) - min(sub$Retention.time,na.rm=T)
+                  too_large_RT_variation <- F
+
+                  ###get subset of allpeptides based on charge and mz window indexing
+                  start_indices <- which(allpeptides_frag_indices_per_mz_window[[c]][,1] > median_m.z + borders_m.z[1])[1] - 1
+                  end_indices <- which(allpeptides_frag_indices_per_mz_window[[c]][,2] > median_m.z + borders_m.z[2])[1] + 1
+
+                  if(is.na(end_indices) | end_indices > nrow(allpeptides_frag_indices_per_mz_window[[c]]))end_indices <- nrow(allpeptides_frag_indices_per_mz_window[[c]])
+
+                  if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]))
+                  {
+                    start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]
+
+                    end_indices_temp <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
+                    if (is.na(end_indices_temp)) {
+                      end_indices <- na.omit(allpeptides_frag_indices_per_mz_window[[c]][(end_indices+1):nrow(allpeptides_frag_indices_per_mz_window[[c]]),3])[1]
+                    }else {
+                      end_indices <- end_indices_temp
+                    }
+                  }else if(!is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]))
+                  {
+                    end_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,4]
+                    start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]
+                  }else if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,3]))
+                  {
+                    start_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,3]
+                    end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
                   }else
                   {
-                    sequence <- sub_peptide$Sequence[1]
+                    start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]
+                    end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
                   }
 
-                  proteins_relevant <- which(nchar(as.character(sub$Proteins)) > 1)
-                  if(length(proteins_relevant) > 0)
+                  temp_sub <- allpeptides_frag[[c]][start_indices:end_indices,]
+                  sub <- temp_sub[which(temp_sub$m.z >= median_m.z + borders_m.z[1] & temp_sub$m.z <= median_m.z + borders_m.z[2] & temp_sub$Retention.time >= median_RT + borders_RT[1] & temp_sub$Retention.time <= median_RT + borders_RT[2] | temp_sub$Sequence == unique_peptides[i] & temp_sub$Charge == c & temp_sub$Modifications == m),]
+
+                  sub <- sub[order(sub$Intensity,sub$Sequence,decreasing = T),]
+
+                  ###check if selected MaxQ features in expected RT and mz window contains outliers (too high deviation in RT or mz compared to all other features)
+                  box_stats_rt <- grDevices::boxplot.stats(sub$Retention.time)$stats
+                  box_stats_mz <- grDevices::boxplot.stats(sub$m.z)$stats
+                  outlier <- which(sub$Retention.time < box_stats_rt[2] | sub$Retention.time > box_stats_rt[4] | sub$m.z < box_stats_mz[2] | sub$m.z > box_stats_mz[4])
+                  #features with sequence identification will be never regarded as outlier
+                  if(any(sub$Sequence[outlier] == unique_peptides[i]))
                   {
-                    protein <- base::paste(unique(c(sub_peptide$Proteins[1],sub[proteins_relevant,"Proteins"])),collapse=";")
-                  }else
+                    outlier <- outlier[-which(sub$Sequence[outlier] == unique_peptides[i])]
+                  }
+                  if(length(outlier)>0) ###any outlier detected? exclude them
                   {
-                    protein <- sub_peptide$Proteins[1]
+                    sub <- sub[-outlier,]
                   }
 
-                  msmsscansrelevant_relevant <- which(nchar(as.character(sub$MSMS.Scan.Numbers)) > 1)
-                  if(length(msmsscansrelevant_relevant) > 0)
+                  ###check if the fraction of features with not currently searched sequence is > 25 %
+                  ###if yes, keep all sequences and indicate this with multiple sequences for this feature otherwise remove other sequences
+                  count_sequences <- plyr::count(sub$Sequence[which(sub$Sequence != " " & sub$Sequence != "")])
+                  if(count_sequences$freq[which(count_sequences$x == unique_peptides[i])] >= 0.8*sum(count_sequences$freq))
                   {
-                    msmsscan <- base::paste(unique(base::paste(sub[msmsscansrelevant_relevant,"Raw.file"],"_msms_",sub[msmsscansrelevant_relevant,"MSMS.Scan.Numbers"],sep="")),collapse=";")
-                  }else
-                  {
-                    msmsscan <- ""
+                    sub <- sub[which(sub$Sequence == unique_peptides[i] | sub$Sequence == " " | sub$Sequence == ""),]
                   }
 
-                  median_mass <- stats::median(sub$Mass,na.rm=T)
-                  Charge <- c
-
-                  scores <- NULL
-                  num_matches <- NULL
-                  for(s in unique(unlist(stringr::str_split(sequence,";"))))
+                  if(any(duplicated(sub$Raw.file)))
                   {
-                    scores <- append(scores,mean(sub$Score[which(sub$Sequence == s)],na.rm=T))
-                    num_matches <- append(num_matches,nrow(sub[which(sub$Sequence == s),]))
+                    sub <- sub[!duplicated(sub$Raw.file),]
                   }
 
-                  Modifications <- ifelse(m != "Unmodified",m,"")
-
-                  RT_length <- max(sub$Retention.Length,na.rm = T)
-
-                  temp_RT <- stats::aggregate(sub$Retention.time,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
-
-                  Observed_RT <- base::paste(temp_RT[match(sample_list,temp_RT$Raw.file),2],collapse=";") ###order all observed RT according to sample_list
-
-                  if(multiplicity == 1) #use m.z corrected for isotope pattern
+                  if(nrow(sub) == 0) ###variation in RT for same peptide sequence between samples is too high
                   {
-                    temp_mz <- stats::aggregate(sub$isotope_corrected_mz_at_max_int,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
-
-                    Observed_mz <- base::paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
-                  }else if(multiplicity > 1)
-                  {
-                    temp_mz <- stats::aggregate(sub$m.z_SILAC,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
-
-                    Observed_mz <- base::paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
-
-                    #calculate expected heavy isotope induced shifts
-                    lys_count <- stats::median(sub$Lys_count,na.rm=T)
-                    arg_count <- stats::median(sub$Arg_count,na.rm=T)
-                    isotope_shifts <- c(((SILAC_settings$light$mass_shift_Lys*lys_count) + (SILAC_settings$light$mass_shift_Arg*arg_count))/c,
-                                        ((SILAC_settings$medium$mass_shift_Lys*lys_count) + (SILAC_settings$medium$mass_shift_Arg*arg_count))/c,
-                                        ((SILAC_settings$heavy$mass_shift_Lys*lys_count) + (SILAC_settings$heavy$mass_shift_Arg*arg_count))/c)
+                    borders_RT_save <- borders_RT
+                    too_large_RT_variation <- T
+                    borders_RT <- c(-RT_max_min/2,RT_max_min/2)
+                    sub <- temp_sub[which(temp_sub$m.z >= median_m.z + borders_m.z[1] & temp_sub$m.z <= median_m.z + borders_m.z[2] & temp_sub$Retention.time >= median_RT + borders_RT[1] & temp_sub$Retention.time <= median_RT + borders_RT[2]),]
+                    if(nrow(sub) == 0)###still no match
+                    {
+                      too_large_RT_variation <- F
+                      borders_RT <- borders_RT_save
+                    }
                   }
 
-                  temp_score <- stats::aggregate(sub$Score,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
-
-                  Observed_score <- base::paste(temp_score[match(sample_list,temp_score$Raw.file),2],collapse=";") ###order all observed scores according to sample_list
-
-
-                  data.table::set(x = features,i = as.integer(count_features),j = as.integer(c(1,4,5,6,11,15,16,17,19,20,21)),value = as.list(c(name,
-                                                                                                                                    sequence,
-                                                                                                                                    protein,
-                                                                                                                                    msmsscan,
-                                                                                                                                    base::paste(rownames(sub),collapse = ","),
-                                                                                                                                    base::paste(scores,collapse=";"),
-                                                                                                                                    base::paste(num_matches,collapse=";"),
-                                                                                                                                    Modifications,
-                                                                                                                                    Observed_RT,
-                                                                                                                                    Observed_mz,
-                                                                                                                                    Observed_score
-                  )))
-
-                  if(multiplicity == 1)
+                  if(nrow(sub) > 0)
                   {
-                    data.table::set(x = features,i = as.integer(count_features),j = as.integer(c(2,3,7,8,9,10,12,13,14,18)),value = as.list(c(
-                      as.numeric(median_m.z),
-                      as.numeric(median_RT),
-                      as.numeric(median_m.z+borders_m.z[1]),
-                      as.numeric(median_m.z+borders_m.z[2]),
-                      as.numeric(median_RT+borders_RT[1]),
-                      as.numeric(median_RT+borders_RT[2]),
-                      as.numeric(nrow(sub)),
-                      as.numeric(median_mass),
-                      as.numeric(Charge),
-                      RT_length
+                    count_features <- count_features + 1
+
+                    ###new feature - give a new name
+                    name <- base::paste("Feature",count_features,sep="_")
+
+                    sequences_relevant <- which(nchar(as.character(sub$Sequence)) > 1)
+                    if(length(sequences_relevant) > 0)
+                    {
+                      sequence <- base::paste(unique(c(sub_peptide$Sequence[1],sub[sequences_relevant,"Sequence"])),collapse=";")
+                    }else
+                    {
+                      sequence <- sub_peptide$Sequence[1]
+                    }
+
+                    proteins_relevant <- which(nchar(as.character(sub$Proteins)) > 1)
+                    if(length(proteins_relevant) > 0)
+                    {
+                      protein <- base::paste(unique(c(sub_peptide$Proteins[1],sub[proteins_relevant,"Proteins"])),collapse=";")
+                    }else
+                    {
+                      protein <- sub_peptide$Proteins[1]
+                    }
+
+                    msmsscansrelevant_relevant <- which(nchar(as.character(sub$MSMS.Scan.Numbers)) > 1)
+                    if(length(msmsscansrelevant_relevant) > 0)
+                    {
+                      msmsscan <- base::paste(unique(base::paste(sub[msmsscansrelevant_relevant,"Raw.file"],"_msms_",sub[msmsscansrelevant_relevant,"MSMS.Scan.Numbers"],sep="")),collapse=";")
+                    }else
+                    {
+                      msmsscan <- ""
+                    }
+
+                    median_mass <- stats::median(sub$Mass,na.rm=T)
+                    Charge <- c
+
+                    scores <- NULL
+                    num_matches <- NULL
+                    for(s in unique(unlist(stringr::str_split(sequence,";"))))
+                    {
+                      scores <- append(scores,mean(sub$Score[which(sub$Sequence == s)],na.rm=T))
+                      num_matches <- append(num_matches,nrow(sub[which(sub$Sequence == s),]))
+                    }
+
+                    Modifications <- ifelse(m != "Unmodified",m,"")
+
+                    RT_length <- max(sub$Retention.Length,na.rm = T)
+
+                    temp_RT <- stats::aggregate(sub$Retention.time,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
+
+                    Observed_RT <- base::paste(temp_RT[match(sample_list,temp_RT$Raw.file),2],collapse=";") ###order all observed RT according to sample_list
+
+                    if(multiplicity == 1) #use m.z corrected for isotope pattern
+                    {
+                      temp_mz <- stats::aggregate(sub$isotope_corrected_mz_at_max_int,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
+
+                      Observed_mz <- base::paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
+                    }else if(multiplicity > 1)
+                    {
+                      temp_mz <- stats::aggregate(sub$m.z_SILAC,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
+
+                      Observed_mz <- base::paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
+
+                      #calculate expected heavy isotope induced shifts
+                      lys_count <- stats::median(sub$Lys_count,na.rm=T)
+                      arg_count <- stats::median(sub$Arg_count,na.rm=T)
+                      isotope_shifts <- c(((SILAC_settings$light$mass_shift_Lys*lys_count) + (SILAC_settings$light$mass_shift_Arg*arg_count))/c,
+                                          ((SILAC_settings$medium$mass_shift_Lys*lys_count) + (SILAC_settings$medium$mass_shift_Arg*arg_count))/c,
+                                          ((SILAC_settings$heavy$mass_shift_Lys*lys_count) + (SILAC_settings$heavy$mass_shift_Arg*arg_count))/c)
+                    }
+
+                    temp_score <- stats::aggregate(sub$Score,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
+
+                    Observed_score <- base::paste(temp_score[match(sample_list,temp_score$Raw.file),2],collapse=";") ###order all observed scores according to sample_list
+
+
+                    data.table::set(x = features,i = as.integer(count_features),j = as.integer(c(1,4,5,6,11,15,16,17,19,20,21)),value = as.list(c(name,
+                                                                                                                                                  sequence,
+                                                                                                                                                  protein,
+                                                                                                                                                  msmsscan,
+                                                                                                                                                  base::paste(rownames(sub),collapse = ","),
+                                                                                                                                                  base::paste(scores,collapse=";"),
+                                                                                                                                                  base::paste(num_matches,collapse=";"),
+                                                                                                                                                  Modifications,
+                                                                                                                                                  Observed_RT,
+                                                                                                                                                  Observed_mz,
+                                                                                                                                                  Observed_score
                     )))
-                  }else if(multiplicity > 1)
-                  {
-                    data.table::set(x = features,i = as.integer(count_features),j = as.integer(c(2,3,7,8,9,10,12,13,14,18,22:24)),value = as.list(c(
-                      as.numeric(median_m.z),
-                      as.numeric(median_RT),
-                      as.numeric(median_m.z+borders_m.z[1]),
-                      as.numeric(median_m.z+borders_m.z[2]),
-                      as.numeric(median_RT+borders_RT[1]),
-                      as.numeric(median_RT+borders_RT[2]),
-                      as.numeric(nrow(sub)),
-                      as.numeric(median_mass),
-                      as.numeric(Charge),
-                      RT_length,
-                      isotope_shifts[1],
-                      isotope_shifts[2],
-                      isotope_shifts[3]
-                    )))
-                  }
+
+                    if(multiplicity == 1)
+                    {
+                      data.table::set(x = features,i = as.integer(count_features),j = as.integer(c(2,3,7,8,9,10,12,13,14,18)),value = as.list(c(
+                        as.numeric(median_m.z),
+                        as.numeric(median_RT),
+                        as.numeric(median_m.z+borders_m.z[1]),
+                        as.numeric(median_m.z+borders_m.z[2]),
+                        as.numeric(median_RT+borders_RT[1]),
+                        as.numeric(median_RT+borders_RT[2]),
+                        as.numeric(nrow(sub)),
+                        as.numeric(median_mass),
+                        as.numeric(Charge),
+                        RT_length
+                      )))
+                    }else if(multiplicity > 1)
+                    {
+                      data.table::set(x = features,i = as.integer(count_features),j = as.integer(c(2,3,7,8,9,10,12,13,14,18,22:24)),value = as.list(c(
+                        as.numeric(median_m.z),
+                        as.numeric(median_RT),
+                        as.numeric(median_m.z+borders_m.z[1]),
+                        as.numeric(median_m.z+borders_m.z[2]),
+                        as.numeric(median_RT+borders_RT[1]),
+                        as.numeric(median_RT+borders_RT[2]),
+                        as.numeric(nrow(sub)),
+                        as.numeric(median_mass),
+                        as.numeric(Charge),
+                        RT_length,
+                        isotope_shifts[1],
+                        isotope_shifts[2],
+                        isotope_shifts[3]
+                      )))
+                    }
 
 
-                  ###now mark matched features
-                  data.table::set(temp_data,i = as.integer(rownames(sub)),j=1L,value=1)
-                  #temp_data[as.numeric(rownames(sub)),1] <- 1
+                    ###now mark matched features
+                    data.table::set(temp_data,i = as.integer(rownames(sub)),j=1L,value=1)
+                    #temp_data[as.numeric(rownames(sub)),1] <- 1
 
-                  ###if RT_window had to be increased, reset borders_RT
-                  if(too_large_RT_variation == T)
-                  {
-                    too_large_RT_variation <- F
-                    borders_RT <- borders_RT_save
+                    ###if RT_window had to be increased, reset borders_RT
+                    if(too_large_RT_variation == T)
+                    {
+                      too_large_RT_variation <- F
+                      borders_RT <- borders_RT_save
+                    }
                   }
                 }
               }
             }
           }
-        }
+        },error=function(cond) {})
 
         updatecounter <- updatecounter + 1
         if(updatecounter >= 50)
@@ -2214,227 +2218,229 @@ align_features <- function(path_to_input,path_to_output,preprocess_pipeline="Max
         last_index <- last_index + number_of_rows_per_peptide_sequence[i,2]
         sub_peptide <- sub_peptide[which(sub_peptide$Sequence == unique_peptides[i]),]
 
-        for(c in unique(sub_peptide$Charge))
-        {
-          for(m in unique(sub_peptide$Modifications))
+        tryCatch({
+          for(c in unique(sub_peptide$Charge))
           {
-            sub <- sub_peptide[which(sub_peptide$Charge == c & sub_peptide$Modifications == m),]
-            if(nrow(sub) > 0)
+            for(m in unique(sub_peptide$Modifications))
             {
-              sub <- sub[order(sub$Intensity,decreasing = T),]
-
-              ###only use features close to median feature over all samples for this peptide
-              median_m.z <- stats::median(sub$m.z,na.rm=T)##
-              median_RT <- stats::median(sub$Retention.time,na.rm=T)
-              median_IM <- stats::median(sub$inverse_K0,na.rm=T)
-              selection <- which(abs(sub$inverse_K0-median_IM) < borders_IM[2] & abs(sub$Retention.time-median_RT) < borders_RT[2] & abs(sub$m.z-median_m.z) < borders_m.z[2])
-              sub <- sub[selection,]
-
+              sub <- sub_peptide[which(sub_peptide$Charge == c & sub_peptide$Modifications == m),]
               if(nrow(sub) > 0)
               {
-                ###check if peptide was sequenced several times. If this is the case, use feature closest to median
-                if(any(duplicated(sub$Raw.file)))
-                {
-                  sub <- sub[!duplicated(sub$Raw.file),]
-                }
+                sub <- sub[order(sub$Intensity,decreasing = T),]
 
+                ###only use features close to median feature over all samples for this peptide
                 median_m.z <- stats::median(sub$m.z,na.rm=T)##
                 median_RT <- stats::median(sub$Retention.time,na.rm=T)
                 median_IM <- stats::median(sub$inverse_K0,na.rm=T)
-
-                RT_max_min <- max(sub$Retention.time,na.rm=T) - min(sub$Retention.time,na.rm=T)
-                too_large_RT_variation <- F
-
-                ###get subset of allpeptides based on charge and mz window indexing
-                start_indices <- which(allpeptides_frag_indices_per_mz_window[[c]][,1] > median_m.z + borders_m.z[1])[1] - 1
-                end_indices <- which(allpeptides_frag_indices_per_mz_window[[c]][,2] > median_m.z + borders_m.z[2])[1] + 1
-
-                if(is.na(end_indices) | end_indices > nrow(allpeptides_frag_indices_per_mz_window[[c]]))end_indices <- nrow(allpeptides_frag_indices_per_mz_window[[c]])
-
-                if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]))
-                {
-                  start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]
-                  end_indices_temp <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
-                  if (is.na(end_indices_temp)) {
-                    end_indices <- na.omit(allpeptides_frag_indices_per_mz_window[[c]][(end_indices+1):nrow(allpeptides_frag_indices_per_mz_window[[c]]),3])[1]
-                  }else {
-                    end_indices <- end_indices_temp
-                  }
-                }else if(!is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]))
-                {
-                  end_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,4]
-                  start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]
-                }else if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,3]))
-                {
-                  start_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,3]
-                  end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
-                }else
-                {
-                  start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]
-                  end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
-                }
-
-                temp_sub <- allpeptides_frag[[c]][start_indices:end_indices,]
-                sub <- temp_sub[which(temp_sub$m.z >= median_m.z + borders_m.z[1] & temp_sub$m.z <= median_m.z + borders_m.z[2] &
-                                        temp_sub$Retention.time >= median_RT + borders_RT[1] & temp_sub$Retention.time <= median_RT + borders_RT[2] &
-                                        temp_sub$inverse_K0 >= median_IM + borders_IM[1] & temp_sub$inverse_K0 <= median_IM + borders_IM[2] |
-                                        temp_sub$Sequence == unique_peptides[i] & temp_sub$Charge == c & temp_sub$Modifications == m),]
-
-                sub <- sub[order(sub$Intensity,sub$Sequence,decreasing = T),]
-
-                ###check if selected MaxQ features in expected RT, IM and mz window contains outliers (too high deviation in RT, IM or mz compared to all other features)
-                box_stats_rt <- grDevices::boxplot.stats(sub$Retention.time)$stats
-                box_stats_mz <- grDevices::boxplot.stats(sub$m.z)$stats
-                box_stats_im <- grDevices::boxplot.stats(sub$inverse_K0)$stats
-                outlier <- which(sub$Retention.time < box_stats_rt[2] | sub$Retention.time > box_stats_rt[4] |
-                                   sub$m.z < box_stats_mz[2] | sub$m.z > box_stats_mz[4] |
-                                   sub$inverse_K0 < box_stats_im[2] | sub$inverse_K0 > box_stats_im[4])
-                #features with sequence identification will be never regarded as outlier
-                if(any(sub$Sequence[outlier] == unique_peptides[i]))
-                {
-                  outlier <- outlier[-which(sub$Sequence[outlier] == unique_peptides[i])]
-                }
-                if(length(outlier)>0) ###any outlier detected? exclude them
-                {
-                  sub <- sub[-outlier,]
-                }
-
-                ###check if the fraction of features with not currently searched sequence is > 25 %
-                ###if yes, keep all sequences and indicate this with multiple sequences for this feature otherwise remove other sequences
-                count_sequences <- plyr::count(sub$Sequence[which(sub$Sequence != " " & sub$Sequence != "")])
-                if(count_sequences$freq[which(count_sequences$x == unique_peptides[i])] >= 0.8*sum(count_sequences$freq))
-                {
-                  sub <- sub[which(sub$Sequence == unique_peptides[i] | sub$Sequence == " " | sub$Sequence == ""),]
-                }
-
-                if(any(duplicated(sub$Raw.file)))
-                {
-                  sub <- sub[!duplicated(sub$Raw.file),]
-                }
-
-                if(nrow(sub) == 0) ###variation in RT for same peptide sequence between samples is too high
-                {
-                  borders_RT_save <- borders_RT
-                  too_large_RT_variation <- T
-                  borders_RT <- c(-RT_max_min/2,RT_max_min/2)
-                  sub <- temp_sub[which(temp_sub$m.z >= median_m.z + borders_m.z[1] & temp_sub$m.z <= median_m.z + borders_m.z[2] &
-                                          temp_sub$Retention.time >= median_RT + borders_RT[1] & temp_sub$Retention.time <= median_RT + borders_RT[2] &
-                                          temp_sub$inverse_K0 >= median_IM + borders_IM[1] & temp_sub$inverse_K0 <= median_IM + borders_IM[2]),]
-                  if(nrow(sub) == 0)###still no match
-                  {
-                    too_large_RT_variation <- F
-                    borders_RT <- borders_RT_save
-                  }
-                }
+                selection <- which(abs(sub$inverse_K0-median_IM) < borders_IM[2] & abs(sub$Retention.time-median_RT) < borders_RT[2] & abs(sub$m.z-median_m.z) < borders_m.z[2])
+                sub <- sub[selection,]
 
                 if(nrow(sub) > 0)
                 {
-                  count_features <- count_features + 1
-
-                  ###new feature - give a new name
-                  name <- base::paste("Feature",count_features,sep="_")
-
-                  sequences_relevant <- which(nchar(as.character(sub$Sequence)) > 1)
-                  if(length(sequences_relevant) > 0)
+                  ###check if peptide was sequenced several times. If this is the case, use feature closest to median
+                  if(any(duplicated(sub$Raw.file)))
                   {
-                    sequence <- base::paste(unique(c(sub_peptide$Sequence[1],sub[sequences_relevant,"Sequence"])),collapse=";")
+                    sub <- sub[!duplicated(sub$Raw.file),]
+                  }
+
+                  median_m.z <- stats::median(sub$m.z,na.rm=T)##
+                  median_RT <- stats::median(sub$Retention.time,na.rm=T)
+                  median_IM <- stats::median(sub$inverse_K0,na.rm=T)
+
+                  RT_max_min <- max(sub$Retention.time,na.rm=T) - min(sub$Retention.time,na.rm=T)
+                  too_large_RT_variation <- F
+
+                  ###get subset of allpeptides based on charge and mz window indexing
+                  start_indices <- which(allpeptides_frag_indices_per_mz_window[[c]][,1] > median_m.z + borders_m.z[1])[1] - 1
+                  end_indices <- which(allpeptides_frag_indices_per_mz_window[[c]][,2] > median_m.z + borders_m.z[2])[1] + 1
+
+                  if(is.na(end_indices) | end_indices > nrow(allpeptides_frag_indices_per_mz_window[[c]]))end_indices <- nrow(allpeptides_frag_indices_per_mz_window[[c]])
+
+                  if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]))
+                  {
+                    start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices+1,3]
+                    end_indices_temp <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
+                    if (is.na(end_indices_temp)) {
+                      end_indices <- na.omit(allpeptides_frag_indices_per_mz_window[[c]][(end_indices+1):nrow(allpeptides_frag_indices_per_mz_window[[c]]),3])[1]
+                    }else {
+                      end_indices <- end_indices_temp
+                    }
+                  }else if(!is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]))
+                  {
+                    end_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,4]
+                    start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]
+                  }else if(is.na(allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]) & !is.na(allpeptides_frag_indices_per_mz_window[[c]][end_indices,3]))
+                  {
+                    start_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,3]
+                    end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
                   }else
                   {
-                    sequence <- sub_peptide$Sequence[1]
+                    start_indices <- allpeptides_frag_indices_per_mz_window[[c]][start_indices,3]
+                    end_indices <- allpeptides_frag_indices_per_mz_window[[c]][end_indices,4]
                   }
 
-                  proteins_relevant <- which(nchar(as.character(sub$Proteins)) > 1)
-                  if(length(proteins_relevant) > 0)
+                  temp_sub <- allpeptides_frag[[c]][start_indices:end_indices,]
+                  sub <- temp_sub[which(temp_sub$m.z >= median_m.z + borders_m.z[1] & temp_sub$m.z <= median_m.z + borders_m.z[2] &
+                                          temp_sub$Retention.time >= median_RT + borders_RT[1] & temp_sub$Retention.time <= median_RT + borders_RT[2] &
+                                          temp_sub$inverse_K0 >= median_IM + borders_IM[1] & temp_sub$inverse_K0 <= median_IM + borders_IM[2] |
+                                          temp_sub$Sequence == unique_peptides[i] & temp_sub$Charge == c & temp_sub$Modifications == m),]
+
+                  sub <- sub[order(sub$Intensity,sub$Sequence,decreasing = T),]
+
+                  ###check if selected MaxQ features in expected RT, IM and mz window contains outliers (too high deviation in RT, IM or mz compared to all other features)
+                  box_stats_rt <- grDevices::boxplot.stats(sub$Retention.time)$stats
+                  box_stats_mz <- grDevices::boxplot.stats(sub$m.z)$stats
+                  box_stats_im <- grDevices::boxplot.stats(sub$inverse_K0)$stats
+                  outlier <- which(sub$Retention.time < box_stats_rt[2] | sub$Retention.time > box_stats_rt[4] |
+                                     sub$m.z < box_stats_mz[2] | sub$m.z > box_stats_mz[4] |
+                                     sub$inverse_K0 < box_stats_im[2] | sub$inverse_K0 > box_stats_im[4])
+                  #features with sequence identification will be never regarded as outlier
+                  if(any(sub$Sequence[outlier] == unique_peptides[i]))
                   {
-                    protein <- base::paste(unique(c(sub_peptide$Proteins[1],sub[proteins_relevant,"Proteins"])),collapse=";")
-                  }else
+                    outlier <- outlier[-which(sub$Sequence[outlier] == unique_peptides[i])]
+                  }
+                  if(length(outlier)>0) ###any outlier detected? exclude them
                   {
-                    protein <- sub_peptide$Proteins[1]
+                    sub <- sub[-outlier,]
                   }
 
-                  msmsscansrelevant_relevant <- which(nchar(as.character(sub$MSMS.Scan.Numbers)) > 1)
-                  if(length(msmsscansrelevant_relevant) > 0)
+                  ###check if the fraction of features with not currently searched sequence is > 25 %
+                  ###if yes, keep all sequences and indicate this with multiple sequences for this feature otherwise remove other sequences
+                  count_sequences <- plyr::count(sub$Sequence[which(sub$Sequence != " " & sub$Sequence != "")])
+                  if(count_sequences$freq[which(count_sequences$x == unique_peptides[i])] >= 0.8*sum(count_sequences$freq))
                   {
-                    msmsscan <- base::paste(unique(base::paste(sub[msmsscansrelevant_relevant,"Raw.file"],"_msms_",sub[msmsscansrelevant_relevant,"MSMS.Scan.Numbers"],sep="")),collapse=";")
-                  }else
-                  {
-                    msmsscan <- ""
+                    sub <- sub[which(sub$Sequence == unique_peptides[i] | sub$Sequence == " " | sub$Sequence == ""),]
                   }
 
-                  median_mass <- stats::median(sub$Mass,na.rm=T)
-                  Charge <- c
-
-                  scores <- NULL
-                  num_matches <- NULL
-                  for(s in unique(unlist(stringr::str_split(sequence,";"))))
+                  if(any(duplicated(sub$Raw.file)))
                   {
-                    scores <- append(scores,mean(sub$Score[which(sub$Sequence == s)],na.rm=T))
-                    num_matches <- append(num_matches,nrow(sub[which(sub$Sequence == s),]))
+                    sub <- sub[!duplicated(sub$Raw.file),]
                   }
 
-                  Modifications <- ifelse(m != "Unmodified",m,"")
-
-                  RT_length <- max(sub$Retention.Length,na.rm = T)
-                  temp_RT <- stats::aggregate(sub$Retention.time,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
-                  Observed_RT <- base::paste(temp_RT[match(sample_list,temp_RT$Raw.file),2],collapse=";") ###order all observed RT according to sample_list
-
-                  temp_mz <- stats::aggregate(sub$m.z,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
-                  Observed_mz <- base::paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
-
-                  temp_score <- stats::aggregate(sub$Score,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
-                  Observed_score <- base::paste(temp_score[match(sample_list,temp_score$Raw.file),2],collapse=";") ###order all observed scores according to sample_list
-
-                  IM_length <- max(sub$inverse_K0_length,na.rm = T)
-                  temp_IM <- stats::aggregate(sub$inverse_K0,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
-                  Observed_IM <- base::paste(temp_IM[match(sample_list,temp_IM$Raw.file),2],collapse=";") ###order all observed IM according to sample_list
-
-
-
-                  data.table::set(x = features,i = as.integer(count_features),j = as.integer(c(1,4,5,6,11,15,16,17,19,20,21,26)),value = as.list(c(name,
-                                                                                                                                       sequence,
-                                                                                                                                       protein,
-                                                                                                                                       msmsscan,
-                                                                                                                                       base::paste(rownames(sub),collapse = ","),
-                                                                                                                                       base::paste(scores,collapse=";"),
-                                                                                                                                       base::paste(num_matches,collapse=";"),
-                                                                                                                                       Modifications,
-                                                                                                                                       Observed_RT,
-                                                                                                                                       Observed_mz,
-                                                                                                                                       Observed_score,
-                                                                                                                                       Observed_IM
-                  )))
-                  data.table::set(x = features,i = as.integer(count_features),j = as.integer(c(2,3,7,8,9,10,12,13,14,18,22,23,24,25)),value = as.list(c(
-                    as.numeric(median_m.z),
-                    as.numeric(median_RT),
-                    as.numeric(median_m.z+borders_m.z[1]),
-                    as.numeric(median_m.z+borders_m.z[2]),
-                    as.numeric(median_RT+borders_RT[1]),
-                    as.numeric(median_RT+borders_RT[2]),
-                    as.numeric(nrow(sub)),
-                    as.numeric(median_mass),
-                    as.numeric(Charge),
-                    RT_length,
-                    median_IM,
-                    IM_length,
-                    as.numeric(median_IM+borders_IM[1]),
-                    as.numeric(median_IM+borders_IM[2])
-                  )))
-
-                  ###now mark matched features
-                  data.table::set(temp_data,i = as.integer(rownames(sub)),j=1L,value=1)
-                  #temp_data[as.numeric(rownames(sub)),1] <- 1
-
-                  ###if RT_window had to be increased, reset borders_RT
-                  if(too_large_RT_variation == T)
+                  if(nrow(sub) == 0) ###variation in RT for same peptide sequence between samples is too high
                   {
-                    too_large_RT_variation <- F
-                    borders_RT <- borders_RT_save
+                    borders_RT_save <- borders_RT
+                    too_large_RT_variation <- T
+                    borders_RT <- c(-RT_max_min/2,RT_max_min/2)
+                    sub <- temp_sub[which(temp_sub$m.z >= median_m.z + borders_m.z[1] & temp_sub$m.z <= median_m.z + borders_m.z[2] &
+                                            temp_sub$Retention.time >= median_RT + borders_RT[1] & temp_sub$Retention.time <= median_RT + borders_RT[2] &
+                                            temp_sub$inverse_K0 >= median_IM + borders_IM[1] & temp_sub$inverse_K0 <= median_IM + borders_IM[2]),]
+                    if(nrow(sub) == 0)###still no match
+                    {
+                      too_large_RT_variation <- F
+                      borders_RT <- borders_RT_save
+                    }
+                  }
+
+                  if(nrow(sub) > 0)
+                  {
+                    count_features <- count_features + 1
+
+                    ###new feature - give a new name
+                    name <- base::paste("Feature",count_features,sep="_")
+
+                    sequences_relevant <- which(nchar(as.character(sub$Sequence)) > 1)
+                    if(length(sequences_relevant) > 0)
+                    {
+                      sequence <- base::paste(unique(c(sub_peptide$Sequence[1],sub[sequences_relevant,"Sequence"])),collapse=";")
+                    }else
+                    {
+                      sequence <- sub_peptide$Sequence[1]
+                    }
+
+                    proteins_relevant <- which(nchar(as.character(sub$Proteins)) > 1)
+                    if(length(proteins_relevant) > 0)
+                    {
+                      protein <- base::paste(unique(c(sub_peptide$Proteins[1],sub[proteins_relevant,"Proteins"])),collapse=";")
+                    }else
+                    {
+                      protein <- sub_peptide$Proteins[1]
+                    }
+
+                    msmsscansrelevant_relevant <- which(nchar(as.character(sub$MSMS.Scan.Numbers)) > 1)
+                    if(length(msmsscansrelevant_relevant) > 0)
+                    {
+                      msmsscan <- base::paste(unique(base::paste(sub[msmsscansrelevant_relevant,"Raw.file"],"_msms_",sub[msmsscansrelevant_relevant,"MSMS.Scan.Numbers"],sep="")),collapse=";")
+                    }else
+                    {
+                      msmsscan <- ""
+                    }
+
+                    median_mass <- stats::median(sub$Mass,na.rm=T)
+                    Charge <- c
+
+                    scores <- NULL
+                    num_matches <- NULL
+                    for(s in unique(unlist(stringr::str_split(sequence,";"))))
+                    {
+                      scores <- append(scores,mean(sub$Score[which(sub$Sequence == s)],na.rm=T))
+                      num_matches <- append(num_matches,nrow(sub[which(sub$Sequence == s),]))
+                    }
+
+                    Modifications <- ifelse(m != "Unmodified",m,"")
+
+                    RT_length <- max(sub$Retention.Length,na.rm = T)
+                    temp_RT <- stats::aggregate(sub$Retention.time,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
+                    Observed_RT <- base::paste(temp_RT[match(sample_list,temp_RT$Raw.file),2],collapse=";") ###order all observed RT according to sample_list
+
+                    temp_mz <- stats::aggregate(sub$m.z,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
+                    Observed_mz <- base::paste(temp_mz[match(sample_list,temp_mz$Raw.file),2],collapse=";") ###order all observed mz according to sample_list
+
+                    temp_score <- stats::aggregate(sub$Score,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
+                    Observed_score <- base::paste(temp_score[match(sample_list,temp_score$Raw.file),2],collapse=";") ###order all observed scores according to sample_list
+
+                    IM_length <- max(sub$inverse_K0_length,na.rm = T)
+                    temp_IM <- stats::aggregate(sub$inverse_K0,by=list(Raw.file=sub$Raw.file),FUN=mean,na.rm=T)
+                    Observed_IM <- base::paste(temp_IM[match(sample_list,temp_IM$Raw.file),2],collapse=";") ###order all observed IM according to sample_list
+
+
+
+                    data.table::set(x = features,i = as.integer(count_features),j = as.integer(c(1,4,5,6,11,15,16,17,19,20,21,26)),value = as.list(c(name,
+                                                                                                                                                     sequence,
+                                                                                                                                                     protein,
+                                                                                                                                                     msmsscan,
+                                                                                                                                                     base::paste(rownames(sub),collapse = ","),
+                                                                                                                                                     base::paste(scores,collapse=";"),
+                                                                                                                                                     base::paste(num_matches,collapse=";"),
+                                                                                                                                                     Modifications,
+                                                                                                                                                     Observed_RT,
+                                                                                                                                                     Observed_mz,
+                                                                                                                                                     Observed_score,
+                                                                                                                                                     Observed_IM
+                    )))
+                    data.table::set(x = features,i = as.integer(count_features),j = as.integer(c(2,3,7,8,9,10,12,13,14,18,22,23,24,25)),value = as.list(c(
+                      as.numeric(median_m.z),
+                      as.numeric(median_RT),
+                      as.numeric(median_m.z+borders_m.z[1]),
+                      as.numeric(median_m.z+borders_m.z[2]),
+                      as.numeric(median_RT+borders_RT[1]),
+                      as.numeric(median_RT+borders_RT[2]),
+                      as.numeric(nrow(sub)),
+                      as.numeric(median_mass),
+                      as.numeric(Charge),
+                      RT_length,
+                      median_IM,
+                      IM_length,
+                      as.numeric(median_IM+borders_IM[1]),
+                      as.numeric(median_IM+borders_IM[2])
+                    )))
+
+                    ###now mark matched features
+                    data.table::set(temp_data,i = as.integer(rownames(sub)),j=1L,value=1)
+                    #temp_data[as.numeric(rownames(sub)),1] <- 1
+
+                    ###if RT_window had to be increased, reset borders_RT
+                    if(too_large_RT_variation == T)
+                    {
+                      too_large_RT_variation <- F
+                      borders_RT <- borders_RT_save
+                    }
                   }
                 }
               }
             }
           }
-        }
+        },error=function(cond) {})
 
         updatecounter <- updatecounter + 1
         if(updatecounter >= 50)
