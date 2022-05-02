@@ -1,3 +1,12 @@
+# IceR 0.9.15
+
+## Fixes
+
+* Corrected bug in case of processing of timsToF data
+* Implemented additional error-catching during feature alignment
+
+---
+
 # IceR 0.9.14
 
 ## Fixes
