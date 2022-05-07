@@ -1,3 +1,11 @@
+# IceR 1.2.5
+
+## Fixes
+
+* Corrected bug in case of processing of timsToF data
+
+---
+
 # IceR 1.2.4
 
 ## Fixes

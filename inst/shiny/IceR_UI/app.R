@@ -564,7 +564,6 @@ server <- function(input, output,session)
   shinyjs::disable("medium_labels")
   shinyjs::disable("heavy_labels")
 
-
   ###select file paths
   global_preprocess_output_folder <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\MaxQ_Output")#getwd())
   global_Raw_folder <- reactiveValues(datapath=getwd())#reactiveValues(datapath = "F:\\9_Spike_in_data_sets\\1_UPS1B spike-in in yeast Ramus\\test_shiny\\raw")#getwd())
@@ -695,6 +694,26 @@ server <- function(input, output,session)
 
   })
 
+  ###preprocess pipeline
+  observeEvent(input$preprocess_pipeline, {
+    if(input$preprocess_pipeline == "1")#MaxQ
+    {
+      shinyjs::enable("multiplicity_settings")
+      shinyjs::enable("light_labels")
+      shinyjs::enable("medium_labels")
+      shinyjs::enable("heavy_labels")
+    }
+    if(input$preprocess_pipeline == "2")#User input
+    {
+      updateRadioButtons(session,
+                         "multiplicity_settings",
+                         selected = 1)
+      shinyjs::disable("multiplicity_settings")
+      shinyjs::disable("light_labels")
+      shinyjs::disable("medium_labels")
+      shinyjs::disable("heavy_labels")
+    }
+  })
 
   ###multiplicity
   observeEvent(input$multiplicity_settings, {
@@ -721,28 +740,6 @@ server <- function(input, output,session)
       shinyjs::enable("heavy_labels")
     }
   })
-
-  ###preprocess pipeline
-  observeEvent(input$preprocess_pipeline, {
-    if(input$preprocess_pipeline == "1")#MaxQ
-    {
-      shinyjs::enable("multiplicity_settings")
-      shinyjs::enable("light_labels")
-      shinyjs::enable("medium_labels")
-      shinyjs::enable("heavy_labels")
-    }
-    if(input$preprocess_pipeline == "2")#User input
-    {
-      updateRadioButtons(session,
-                         "multiplicity_settings",
-                         selected = 1)
-      shinyjs::disable("multiplicity_settings")
-      shinyjs::disable("light_labels")
-      shinyjs::disable("medium_labels")
-      shinyjs::disable("heavy_labels")
-    }
-  })
-
 
   ###buttons
   observeEvent(input$run_all, {

@@ -955,6 +955,8 @@ prepare_preprocessed_data <- function(path_to_folder,path_to_output,pipeline=c("
                    paste(evidence$Raw.file,evidence$Charge,evidence$Sequence,evidence$Modifications,evidence$MS.MS.IDs),)
 
     allpeptides$Uncalibrated...Calibrated.m.z..Da. <- evidence$Uncalibrated...Calibrated.m.z..Da.[match]
+    allpeptides$Uncalibrated...Calibrated.m.z..Da.[is.na(allpeptides$Uncalibrated...Calibrated.m.z..Da.)] <- 0
+
 
     ###finally save prepared feature data
     setwd(path_to_output)
@@ -1234,6 +1236,7 @@ prepare_preprocessed_data <- function(path_to_folder,path_to_output,pipeline=c("
     }
 
     allpeptides$Uncalibrated...Calibrated.m.z..Da. <- allpeptides$Uncalibrated.m.z-allpeptides$m.z
+    allpeptides$Uncalibrated...Calibrated.m.z..Da.[is.na(allpeptides$Uncalibrated...Calibrated.m.z..Da.)] <- 0
 
     ###finally save prepared feature data
     setwd(path_to_output)
@@ -1293,26 +1296,6 @@ prepare_preprocessed_data <- function(path_to_folder,path_to_output,pipeline=c("
 #' @export
 align_features <- function(path_to_input,path_to_output,preprocess_pipeline="MaxQ",align_unknown=F,output_file_names_add="IceR_analysis",mz_window=NA,min_mz_window = 0.001,RT_window=NA,min_RT_window=1,min_num_ions_collapse=10,feature_mass_deviation_collapse=0.002,only_unmodified_peptides=F,sample_list=NA,remove_contaminants=T,MassSpec_mode=c("Orbitrap","TIMSToF"),IM_window=NA,min_IM_window=0.002,multiplicity=c(1,2,3),SILAC_settings=list(light=c(""),medium=c("Lys4","Arg6"),heavy=c("Lys8","Arg10")))
 {
-  # path_to_input <- "D:\\Arbeit\\IceR_Github\\Issue_18\\MaxQ"
-  # path_to_output <- "D:\\Arbeit\\IceR_Github\\Issue_18\\IceR"
-  # preprocess_pipeline <- "MaxQ"
-  # align_unknown=F
-  # output_file_names_add="IceR_analysis"
-  # mz_window=NA
-  # min_mz_window = 0.001
-  # RT_window=NA
-  # min_RT_window=1
-  # min_num_ions_collapse=10
-  # feature_mass_deviation_collapse=0.002
-  # only_unmodified_peptides=F
-  # sample_list=c("20210829_QC02_HEK_01","20210830_QC02_HEK_01")
-  # remove_contaminants=T
-  # MassSpec_mode="Orbitrap"
-  # IM_window=NA
-  # min_IM_window=0.002
-  # multiplicity=1
-  # SILAC_settings=list(light=c(""),medium=c("Lys4","Arg6"),heavy=c("Lys8","Arg10"))
-
   options(warn=-1)
   # suppressWarnings(suppressMessages(library(data.table,quietly = T)))
   # suppressWarnings(suppressMessages(library(stringr,quietly = T)))
@@ -3036,6 +3019,7 @@ align_features <- function(path_to_input,path_to_output,preprocess_pipeline="Max
       evidence_peptides_indices <- vector(mode = "list", length = length(evidence_peptides))
       names(evidence_peptides_indices) <- evidence_peptides
 
+      print(paste0(Sys.time()," Prepare for calibrations"))
       max <- length(evidence_peptides)
       pb <- tcltk::tkProgressBar(title = "Indexing peptides",label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
       start_time <- Sys.time()
