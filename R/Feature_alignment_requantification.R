@@ -479,7 +479,7 @@ align_features <- function(path_to_MaxQ_output,path_to_output,align_unknown=F,ou
   #Mass spec Mode can only be Orbitrap or TIMSToF
   MassSpec_mode <- MassSpec_mode[1]
 
-  if(is.na(sample_list))sample_list<-NULL
+  if(any(is.na(sample_list)))sample_list<-NULL
 
   if(output_file_names_add != "")output_file_names_add <- base::paste("_",output_file_names_add,sep="")
 
