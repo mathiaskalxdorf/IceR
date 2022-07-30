@@ -1,3 +1,11 @@
+# IceR 0.9.16
+
+## Fixes
+
+* Fixed issue in align_features() causing an error in case of R > 4.0
+
+---
+
 # IceR 0.9.15
 
 ## Fixes

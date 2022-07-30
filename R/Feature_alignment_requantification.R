@@ -6169,7 +6169,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
     #suppressWarnings(suppressMessages(library(data.table,quietly = T)))
     #suppressWarnings(suppressMessages(library(dplyr,quietly = T)))
 
-    if(is.na(corr_factor)) ###no correction factor specified so correction will be determined and then applied
+    if(any(is.na(corr_factor))) ###no correction factor specified so correction will be determined and then applied
     {
       ###select monoisotopic features with significant quantification for determination of general trends in difference between MaxQ and Requant quantification
       select <- which(!grepl("_i|_d",features$Feature_name))
@@ -6402,7 +6402,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       S2B_temp <- S2B[which(features$Protein != "" & !grepl(";",features$Sequence) ),]
     }
 
-    if(!is.na(quant_pvalue_cutoff))
+    if(any(!is.na(quant_pvalue_cutoff)))
     {
       selection <- which(matrixStats::rowMins(as.matrix(Quant_pvals_temp),na.rm=T) < quant_pvalue_cutoff)
 
@@ -6621,7 +6621,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
       S2B_temp <- S2B[which(features$Protein != "" & !grepl(";",features$Sequence) ),]
     }
 
-    if(!is.na(quant_pvalue_cutoff))
+    if(any(!is.na(quant_pvalue_cutoff)))
     {
       selection <- which(matrixStats::rowMins(as.matrix(Quant_pvals_temp),na.rm=T) < quant_pvalue_cutoff)
 
@@ -6866,7 +6866,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
               }
             }
           }
-          if(is.na(num_ratio_samples)) ###calculate ratios over all samples
+          if(any(is.na(num_ratio_samples))) ###calculate ratios over all samples
           {
             #define start parameter
             start_par <- c(rep(1,ncol(ratio_mat)))
@@ -7208,7 +7208,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_MaxQ_o
               }
             }
           }
-          if(is.na(num_ratio_samples)) ###calculate ratios over all samples
+          if(any(is.na(num_ratio_samples))) ###calculate ratios over all samples
           {
             #define start parameter
             start_par <- c(rep(1,ncol(ratio_mat)))

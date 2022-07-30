@@ -13,7 +13,7 @@ Please consider looking into the `development` branch of the repository for IceR
 #### Win10
 The following installations are required for Windows 10:
 
- - [R](https://cran.r-project.org/bin/windows/base/) (Version 3.63 or above)
+ - [R](https://cran.r-project.org/bin/windows/base/) (Version between 3.63 and 4.2.1)
  - Optional: [Rtools](https://cran.r-project.org/bin/windows/Rtools/history.html) (select required version)
  - Optional: [ProteoWizard](http://proteowizard.sourceforge.net/download.html)
  - Optional: [RStudio](https://rstudio.com/products/rstudio/download/)
@@ -78,7 +78,7 @@ Sorry for potentially unclear and/or amateurish installation instructions for ma
 
 The following installations are required for macOS:
 
- - [R](https://cran.r-project.org/bin/macosx/) (Version 4.0.4 or above)
+ - [R](https://cran.r-project.org/bin/macosx/) (Version 4.0.4)
  - [RStudio](https://rstudio.com/products/rstudio/download/)
  
 In case of macOS (tested for macOS Big Sur 11.1.0) it is important to install and use RStudio as currently a bug in tctlk package prevents IceR from running properly when started directly from R console (tested for R 4.0.4).
