@@ -76,7 +76,7 @@ load_MaxQ_data <- function(path=NA,min_pep_count=1,min_pep_count_criteria=c("all
 {
   options(warn=-1)
   min_pep_count_criteria <- min_pep_count_criteria[1]
-  if(is.na(path))
+  if(any(is.na(path)))
   {
     print("Select a file in the MaxQ output folder")
     path_to_MaxQ <- base::file.choose()
@@ -214,7 +214,7 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
   quant_value <- quant_value[1]
   min_feat_count_criteria <- min_feat_count_criteria[1]
 
-  if(is.na(path_to_parameter_file) & is.na(path_to_requant_folder) & is.na(file_name_extension) & is.na(path_MaxQ))
+  if(any(is.na(path_to_parameter_file)) & any(is.na(path_to_requant_folder)) & any(is.na(file_name_extension)) & any(is.na(path_MaxQ)))
   {
     print("Select Parameters.xlsx")
     parameters <- openxlsx::read.xlsx(base::file.choose(),1)
@@ -249,7 +249,7 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
       MaxQ_data$Organism <- base::substr(MaxQ_data$Fasta.headers,regexpr("OS=",MaxQ_data$Fasta.headers)+3,regexpr("GN=",MaxQ_data$Fasta.headers)-2)
       MaxQ_data$ID <- stringr::str_split(MaxQ_data$Majority.protein.IDs,";",simplify = T)[,1]
     }
-  }else if(!is.na(path_to_parameter_file))
+  }else if(any(!is.na(path_to_parameter_file)))
   {
     parameters <- openxlsx::read.xlsx(path_to_parameter_file,1)
     #check if files can be found in the original location
@@ -284,7 +284,7 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
     }
   }else
   {
-    if(is.na(path_to_requant_folder) | is.na(file_name_extension))
+    if(any(is.na(path_to_requant_folder)) | any(is.na(file_name_extension)))
     {
       print("Select Features_x.tab file")
       path_to_requant <- base::file.choose()
@@ -297,7 +297,7 @@ load_Requant_data <- function(path_to_parameter_file=NA,path_to_requant_folder=N
       file_name_extension <- base::paste("_",file_name_extension,sep="")
     }
 
-    if(is.na(path_MaxQ))
+    if(any(is.na(path_MaxQ)))
     {
       print("Select a file in the corresponding MaxQuant output folder")
       path_to_MaxQ <- base::file.choose()
@@ -1294,7 +1294,7 @@ Barplotsstacked = function(Data,Name="",ylab="Y-axis",logy=F,main="Titel",col="l
     graphics::text(graphics::par("usr")[2]+1,mean(curdata,na.rm=T),round(mean(curdata,na.rm=T),digits=0))
   }
 
-  if(!is.na(Legends))
+  if(any(!is.na(Legends)))
   {
     graphics::par(xpd=T)
     defaultpar <- graphics::par()
@@ -1409,7 +1409,7 @@ BarplotsSBS = function(Data,ErrbarData=NA,Name="",ylab="Y-axis",main="Titel",col
     names <- colnames(Data)
   }
   graphics::par(mar=margins,xpd=F)
-  if(is.na(ylim))
+  if(any(is.na(ylim)))
   {
     if(logy == F)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",beside=T)
     if(logy == T)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",beside=T,log="y")
@@ -1428,7 +1428,7 @@ BarplotsSBS = function(Data,ErrbarData=NA,Name="",ylab="Y-axis",main="Titel",col
 
   }
 
-  if(!is.na(ErrbarData))
+  if(any(!is.na(ErrbarData)))
   {
     for(i in 1:ncol(curdata))
     {
@@ -1451,7 +1451,7 @@ BarplotsSBS = function(Data,ErrbarData=NA,Name="",ylab="Y-axis",main="Titel",col
     graphics::abline(h=horiz_line,lty=2)
   }
 
-  if(!is.na(Legends))
+  if(any(!is.na(Legends)))
   {
     graphics::par(xpd=T)
     defaultpar <- graphics::par()
@@ -1516,7 +1516,7 @@ Barplots = function(Data,ErrbarData=NA,Name="",xlab="X-axis",ylab="Y-axis",main=
   }
   graphics::par(mar=margins,xpd=F)
 
-  if(is.na(ylim))
+  if(any(is.na(ylim)))
   {
     if(logy == F)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n")
     if(logy == T)mids <- graphics::barplot(curdata,ylab=ylab,col=col,las=2,main=main,xaxt = "n",log="y")
@@ -1529,7 +1529,7 @@ Barplots = function(Data,ErrbarData=NA,Name="",xlab="X-axis",ylab="Y-axis",main=
 
 
   graphics::title(xlab = xlab)
-  if(!is.na(ErrbarData))
+  if(any(!is.na(ErrbarData)))
   {
     Hmisc::errbar(mids,curdata, as.numeric(curdata+ErrbarData), as.numeric(curdata-ErrbarData), add=T, pch=26, cap=.01)
   }
@@ -1540,7 +1540,7 @@ Barplots = function(Data,ErrbarData=NA,Name="",xlab="X-axis",ylab="Y-axis",main=
     graphics::par(xpd=T)
     graphics::text(graphics::par("usr")[2]+1,mean(curdata,na.rm=T),round(mean(curdata,na.rm=T),digits=digits_average))
   }
-  if(!is.na(Legends))
+  if(any(!is.na(Legends)))
   {
     graphics::par(xpd=T)
     defaultpar <- graphics::par()
@@ -1585,7 +1585,7 @@ densityplots = function(datafcs,names=NA,col=NA,main="",xlab="",xlim=NA,lwd=2)
   densmax <- 0
   for(i in 1:ncol(datafcs))
   {
-    if(!is.na(sum(unique(datafcs[,i]),na.rm=T)) & length(unique(datafcs[,i])) > 1 | length(unique(datafcs[,i])) == 1 & !is.na(unique(datafcs[,i])[1]))
+    if(any(!is.na(sum(unique(datafcs[,i]),na.rm=T))) & length(unique(datafcs[,i])) > 1 | length(unique(datafcs[,i])) == 1 & !is.na(unique(datafcs[,i])[1]))
     {
       densitys[[i]] <- stats::density(datafcs[,i],na.rm=T)
       if(max(densitys[[i]]$y) > densmax & length(unique(datafcs[,i])) > 1) ### only if its not the reference
@@ -1598,17 +1598,17 @@ densityplots = function(datafcs,names=NA,col=NA,main="",xlab="",xlim=NA,lwd=2)
     }
 
   }
-  if(is.na(col)){col <- randomcoloR::randomColor(ncol(datafcs))}
+  if(any(is.na(col))){col <- randomcoloR::randomColor(ncol(datafcs))}
   if(length(col) == 1){col <- rep(col,ncol(datafcs))}
   counter = 0
   for(i in 1:ncol(datafcs))
   {
-    if(!is.na(densitys[[i]][3]))
+    if(any(!is.na(densitys[[i]][3])))
     {
       counter <- counter + 1
       if(counter == 1)
       {
-        if(!is.na(xlim))
+        if(any(!is.na(xlim)))
         {
           plot(densitys[[1]],xlim = xlim,ylim=c(0,densmax),main=main,xlab=xlab,col=col[i],lwd=lwd)
         }else
@@ -1625,7 +1625,7 @@ densityplots = function(datafcs,names=NA,col=NA,main="",xlab="",xlim=NA,lwd=2)
     }
   }
 
-  if(!is.na(names))
+  if(any(!is.na(names)))
   {
     graphics::par(xpd=T)
     graphics::par(font=2)
@@ -1756,7 +1756,7 @@ PECA_analysis <- function(peptide_data,peptide_data_quant_significance=NULL,ids,
   group_1 <- colnames(peptide_data)[which(anno == group1_name)]
   group_2 <- colnames(peptide_data)[which(anno == group2_name)]
   #max_pvalue per feature under investigation
-  if(!is.na(pvalue_cutoff))
+  if(any(!is.na(pvalue_cutoff)))
   {
     max_pval <- matrixStats::rowMaxs(as.matrix(peptide_data_quant_significance[,append(group_1,group_2)]),na.rm=T)
     peptide_data <- peptide_data[which(max_pval < pvalue_cutoff),]
@@ -1770,7 +1770,7 @@ PECA_analysis <- function(peptide_data,peptide_data_quant_significance=NULL,ids,
   colnames(DE_results)[c(1,5,6)] <- c("logFC","P.Value","adj.P.Val")
 
   #calculate ratio based on TopN abundant peptides per protein
-  if(!is.na(TopN_ratio))
+  if(any(!is.na(TopN_ratio)))
   {
     peptide_data <- base::log2(peptide_data[,-1])
     for(i in 1:nrow(DE_results))
