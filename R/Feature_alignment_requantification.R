@@ -205,7 +205,7 @@ mzxml_to_list <- function(path_to_mzXML,n_cores=2)
 
 #' Extract MS1-spectra from raw TIMS-ToF Pro data
 #' @param path_to_raw Path to folder containing d-files
-#' @details Convert MS1 spectra with TIMS information in raw files of Bruker TIMS-ToF Pro Mass Spectrometers into tables containing m/z, RT, inverse ion mobility and intensity information per ion. This process is currently very slow and can take several days even for a small data set. It also requires enough space on the home drive of the PC as well as at least 50 Gb of memory.
+#' @details Deprecated. Convert MS1 spectra with TIMS information in raw files of Bruker TIMS-ToF Pro Mass Spectrometers into tables containing m/z, RT, inverse ion mobility and intensity information per ion. Uses msconvert. This process is currently very slow and can take several days even for a small data set. It also requires enough space on the home drive of the PC as well as at least 50 Gb of memory.
 #' @return Resulting ion tables are stored in a sub-directory (all_ion_lists) of the raw folder as .RData files
 #' @export
 convert_rawTIMS <- function(path_to_raw=NULL)
@@ -450,6 +450,63 @@ convert_rawTIMS <- function(path_to_raw=NULL)
   }
 }
 
+
+#' Extract MS1-spectra from raw TIMS-ToF Pro data
+#' @param path_to_raw Path to folder containing d-files
+#' @details Convert MS1 spectra with TIMS information in raw files of Bruker TIMS-ToF Pro Mass Spectrometers into tables containing m/z, RT, inverse ion mobility and intensity information per ion. Uses functionality from package timsr.
+#' @return Resulting ion tables are stored in a sub-directory (all_ion_lists) of the raw folder as .RData files
+#' @export
+convert_rawTIMS_timsr <- function(path_to_raw=NULL)
+{
+  prepare_rawTIMS()
+
+  if(is.null(path_to_raw))path_to_raw <- rChoiceDialogs::rchoose.dir(caption = "Select folder containing raw files")
+
+  raw_files <- list.files(path_to_raw)
+  raw_files <- raw_files[which(grepl("\\.d",raw_files))]
+
+  ###check which raw files still have to be converted
+  dir.create(base::paste(path_to_raw,"/all_ion_lists",sep=""),showWarnings = F)
+  text_available <- list.files(base::paste(path_to_raw,"/all_ion_lists",sep=""))
+  files_to_be_converted <- raw_files[which(base::gsub("\\.d","",raw_files) %not in% base::gsub("_all_ions.RData","",text_available))]
+
+  if(length(files_to_be_converted)>0)
+  {
+    ###now perform conversion using timsr
+    for(i in 1:length(files_to_be_converted))
+    {
+      dat = timsr::TimsR(paste0(path_to_raw,"\\",files_to_be_converted[i]))
+      sel <- timsr::MS1(dat) #get all MS1 frames
+      table_store = dat[sel, c('retention_time','inv_ion_mobility','mz','intensity')]
+      opentimsr::CloseTIMS(dat)
+      save(table_store,file = base::paste(path_to_raw,"/all_ion_lists/",base::gsub("\\.d","_all_ions.RData",files_to_be_converted[i]),sep=""))
+    }
+  }else
+  {
+    print("All files are already converted.")
+  }
+}
+
+#' Prepare for access of raw TIMS-ToF Pro data
+#' @param path_to_raw Path to folder containing d-files
+#' @details Getting prepared for acess of raw timsToF Pro data
+#' @return NULL
+#' @export
+prepare_rawTIMS <- function(path_to_raw=NULL)
+{
+  win_user_folder <- path.expand('~')
+
+  ###create temporary folder
+  dir.create(base::paste(win_user_folder,"\\temp_bruker",sep=""),showWarnings = F)
+
+  if (!file.exists(paste0(win_user_folder,"\\temp_bruker/timsdata.dll"))) {
+    path_to_bruker_dll = timsr::download_bruker_proprietary_code(base::paste(win_user_folder,"\\temp_bruker",sep=""))
+  } else {
+    path_to_bruker_dll <- paste0(win_user_folder,"\\temp_bruker/timsdata.dll")
+  }
+  timsr::setup_bruker_so(path_to_bruker_dll)
+  #opentimsr::opentims_set_threads(1)
+}
 
 #' Prepare preprocessed data for IceR
 #' @param path_to_folder Path to folder containing the results from the preprocessing pipeline (e.g. MaxQuant txt folder containing at least allpeptides.txt, evidence.txt, peptides.txt and proteinGroups.txt)
@@ -1408,8 +1465,8 @@ align_features <- function(path_to_input,path_to_output,preprocess_pipeline="Max
     # check up-front that all samples were measured with comparable gradient lengths
     max_RTs <- stats::aggregate(allpeptides$Retention.time,by=list(Raw.file = allpeptides$Raw.file),max,na.rm=T)
     max_RTs_range <- c(round(min(max_RTs$x,na.rm=T),digits = 0),round(max(max_RTs$x,na.rm=T),digits=0))
-    if (max_RTs_range[2] - max_RTs_range[1] > 1) {
-      stop(paste0("Gradient lengths between samples differ too much!!! Minimal observed gradient length: ",max_RTs_range[1],", Maximal observed gradient length: ",max_RTs_range[2],". IceR can only reliably process data acquired with same gradient lengths!!!"))
+    if (max_RTs_range[2] - max_RTs_range[1] > 5) {
+      warning(paste0("Gradient lengths between samples differ a lot!!! Minimal observed gradient length: ",max_RTs_range[1],", Maximal observed gradient length: ",max_RTs_range[2],". IceR can only reliably process data acquired with similar gradient lengths!!!"))
     }
 
     # start processing
@@ -4270,16 +4327,17 @@ add_missed_peptides <- function(path_to_features,feature_table_file_name="Featur
 #' Intermediate results of the function are stored in RData files.
 requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,feature_table_file_name="Features_aligned_merged_IceR_analysis.txt",output_file_names_add="IceR_analysis",RT_calibration=T,mz_calibration=T,abundance_estimation_correction = T,Quant_pVal_cut=0.05,n_cores=2,kde_resolution = 50,num_peaks_store = 5,plot_peak_detection=F,alignment_variability_score_cutoff=0.05,alignment_scores_cutoff=0.05,mono_iso_alignment_cutoff=0.05,calc_peptide_LFQ=F,calc_protein_LFQ=T,MassSpec_mode=c("Orbitrap","TIMSToF"),use_IM_data = T,path_to_extracted_spectra=NA)
 {
-  # path_to_features <- "D:\\Arbeit\\IceR_Github\\Issue_18\\IceR"
-  # path_to_mzXML <- "D:\\Arbeit\\IceR_Github\\Issue_18\\raw\\mzXML"
-  # path_to_input <- "D:\\Arbeit\\IceR_Github\\Issue_18\\MaxQ"
-  # feature_table_file_name="Features_aligned_merged_IceR_analysis.txt"
-  # output_file_names_add="IceR_analysis"
+  # path_to_features <- "E:\\9_Spike_in_data_sets\\7_HeLa Ecoli grand data set\\TIMS\\IceR_1_3"
+  # path_to_mzXML <- NA
+  # path_to_extracted_spectra <- "C:/raw/"#"E:\\9_Spike_in_data_sets\\7_HeLa Ecoli grand data set\\TIMS\\raw"
+  # path_to_input <- "E:\\9_Spike_in_data_sets\\7_HeLa Ecoli grand data set\\TIMS\\MaxQ"
+  # feature_table_file_name="Features_aligned_merged_IceR_analysis_1_3.txt"
+  # output_file_names_add="IceR_analysis_1_3"
   # RT_calibration=T
   # mz_calibration=T
   # abundance_estimation_correction = T
   # Quant_pVal_cut=0.05
-  # n_cores=4
+  # n_cores=1
   # kde_resolution = 50
   # num_peaks_store = 5
   # plot_peak_detection=F
@@ -4288,9 +4346,8 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
   # mono_iso_alignment_cutoff=0.05
   # calc_peptide_LFQ=F
   # calc_protein_LFQ=T
-  # MassSpec_mode="Orbitrap"
+  # MassSpec_mode="TIMSToF"
   # use_IM_data = T
-  # path_to_extracted_spectra=NA
 
   options(warn=-1)
   #suppressWarnings(suppressMessages(library(mgcv,quietly = T)))
@@ -4321,9 +4378,11 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
     features$Inv_K0_length[is.na(features$Inv_K0_length)] <- stats$stats[3]
   }
 
-  ###Add decoy features
+  ###Add decoy features (randomly pick 1000 features and shift mz and RT arbitrarily)
   features_decoy <- features[which(!grepl("_pmp|_i",features$Feature_name)),]
   features_decoy$Feature_name <- base::paste(features_decoy$Feature_name,"_d",sep="")
+  set.seed(42)
+  features_decoy <- features_decoy[sample(1:nrow(features_decoy),1000),]
 
   RT_ranges <- features_decoy$RT_range_max-features_decoy$RT_range_min
   mz_ranges <- features_decoy$m.z_range_max-features_decoy$m.z_range_min
@@ -4377,9 +4436,6 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
     ####indexing_RT_window defines how large each RT indexing window is to speed up subsetting. 0.5 min was observed to be good
     get_intensities <- function(Sample_ID,path,features_select,indexing_RT_window=0.1,RT_calibration,mz_calibration,peak_detection,ion_intensity_cutoff,mean_background_ion_intensity_model,sd_background_ion_intensity,peak_min_ion_count,kde_resolution,num_peaks_store,plots,MassSpec_mode,use_IM_data)
     {
-      #suppressWarnings(suppressMessages(library(lubridate,quietly = T)))
-      #suppressWarnings(suppressMessages(library(stringr,quietly = T)))
-
       if(any(!is.na(mean_background_ion_intensity_model)))
       {
         colnames(mean_background_ion_intensity_model) <- base::gsub("-",".",colnames(mean_background_ion_intensity_model))
@@ -4978,7 +5034,6 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
 
       setwd(path)
 
-
       max <- 1
       print("Load spectra data")
       pb <- tcltk::tkProgressBar(title = base::paste("Load spectra data:",Sample_ID),label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
@@ -5000,7 +5055,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
         rm(table_store)
         gc()
 
-        dat$RT <- dat$RT/60
+        dat$retention_time <- dat$retention_time/60
         dat <- dat[,c(3,1,4,2)]
         colnames(dat) <- c("m.z","RT","Intensity","1/K0")
       }
@@ -5020,90 +5075,99 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
 
       if(MassSpec_mode == "Orbitrap")
       {
-        Indices <- base::as.data.frame(matrix(ncol=4,nrow=num_windows))
-        colnames(Indices) <- c("RT_start","RT_end","Row_start","Row_end")
-        Indices$RT_start <- as.numeric(Indices$RT_start)
-        Indices$RT_end <- as.numeric(Indices$RT_end)
-        Indices$Row_start <- as.numeric(Indices$Row_start)
-        Indices$Row_end <- as.numeric(Indices$Row_end)
+        if (file.exists(base::paste(base::gsub("_Channel_light|_Channel_medium|_Channel_heavy","",Sample_ID),"_all_ions_indices.RData",sep=""))) {
+          #indexing already performed, so load indexes, will load object Indices into environment
+          load(file = base::paste(base::gsub("_Channel_light|_Channel_medium|_Channel_heavy","",Sample_ID),"_all_ions_indices.RData",sep=""))
+        } else {
+          #indexes not available so run now
+          Indices <- base::as.data.frame(matrix(ncol=4,nrow=num_windows))
+          colnames(Indices) <- c("RT_start","RT_end","Row_start","Row_end")
+          Indices$RT_start <- as.numeric(Indices$RT_start)
+          Indices$RT_end <- as.numeric(Indices$RT_end)
+          Indices$Row_start <- as.numeric(Indices$Row_start)
+          Indices$Row_end <- as.numeric(Indices$Row_end)
 
-        print("Indexing intensities")
-        max <- nrow(Indices)
-        pb <- tcltk::tkProgressBar(title = base::paste("Indexing intensities:",Sample_ID),label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
-        start_time <- Sys.time()
-        updatecounter <- 0
-        time_require <- 0
-        start <- 1
-        end <- max
+          print("Indexing intensities")
+          max <- nrow(Indices)
+          pb <- tcltk::tkProgressBar(title = base::paste("Indexing intensities:",Sample_ID),label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+          start_time <- Sys.time()
+          updatecounter <- 0
+          time_require <- 0
+          start <- 1
+          end <- max
 
-        cur_index <- 1
+          cur_index <- 1
 
-        ###increment per indexing
-        incr <- 10000
+          ###increment per indexing
+          incr <- 10000
 
-        for(i in 1:nrow(Indices))#
-        {
-          start <- (i-1)*indexing_RT_window
-          end <- i*indexing_RT_window
-
-          indx <- cur_index
-          indx_prev <- cur_index
-          while(T)
+          for(i in 1:nrow(Indices))#
           {
-            indx <- indx + incr
+            start <- (i-1)*indexing_RT_window
+            end <- i*indexing_RT_window
 
-            if(dat$RT[indx] >= end | indx > nrow(dat))
+            indx <- cur_index
+            indx_prev <- cur_index
+            while(T)
             {
-              break
-            }else
-            {
-              indx_prev <- indx
-            }
-          }
-          if(indx > nrow(dat))indx <- nrow(dat)
+              indx <- indx + incr
 
-          #inds <- which(dat$RT > start & dat$RT < end)
-          if(indx > indx_prev)
-          {
-            temp <- dat[indx_prev:indx,]
-
-            if(length(which(temp$RT < end)) > 0)
-            {
-              inds <- cur_index:(indx_prev-1+max(which(temp$RT < end)))
-
-              incr <- max(inds) + 1 - cur_index
-
-              cur_index <- max(inds) + 1
-              if(length(inds)>0)
+              if(dat$RT[indx] >= end | indx > nrow(dat))
               {
-                data.table::set(Indices,i = as.integer(i),j=as.integer(1:4),value=as.list(c(start,end,min(inds),max(inds))))
+                break
+              }else
+              {
+                indx_prev <- indx
               }
             }
+            if(indx > nrow(dat))indx <- nrow(dat)
+
+            #inds <- which(dat$RT > start & dat$RT < end)
+            if(indx > indx_prev)
+            {
+              temp <- dat[indx_prev:indx,]
+
+              if(length(which(temp$RT < end)) > 0)
+              {
+                inds <- cur_index:(indx_prev-1+max(which(temp$RT < end)))
+
+                incr <- max(inds) + 1 - cur_index
+
+                cur_index <- max(inds) + 1
+                if(length(inds)>0)
+                {
+                  data.table::set(Indices,i = as.integer(i),j=as.integer(1:4),value=as.list(c(start,end,min(inds),max(inds))))
+                }
+              }
+            }
+
+
+            updatecounter <- updatecounter + 1
+            if(updatecounter >= 1)
+            {
+              time_elapsed <- difftime(Sys.time(),start_time,units="secs")
+              time_require <- (time_elapsed/(i/max))*(1-(i/max))
+              td <- lubridate::seconds_to_period(time_require)
+              time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
+
+              updatecounter <- 0
+              tcltk::setTkProgressBar(pb, i, label=base::paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
+            }
+
           }
+          close(pb)
 
-
-          updatecounter <- updatecounter + 1
-          if(updatecounter >= 1)
+          if(any(rowSums(is.na(Indices)) > 0))
           {
-            time_elapsed <- difftime(Sys.time(),start_time,units="secs")
-            time_require <- (time_elapsed/(i/max))*(1-(i/max))
-            td <- lubridate::seconds_to_period(time_require)
-            time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
-
-            updatecounter <- 0
-            tcltk::setTkProgressBar(pb, i, label=base::paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
+            Indices <- Indices[-which(rowSums(is.na(Indices)) > 0),]
           }
 
-        }
-        close(pb)
+          if(min(features_select$RT_range_min) < Indices$RT_start[1])Indices$RT_start[1] <- min(features_select$RT_range_min)
+          if(max(features_select$RT_range_max) > Indices$RT_end[nrow(Indices)])Indices$RT_end[nrow(Indices)] <- max(features_select$RT_range_max)
 
-        if(any(rowSums(is.na(Indices)) > 0))
-        {
-          Indices <- Indices[-which(rowSums(is.na(Indices)) > 0),]
+          #store indexed data
+          save(Indices,file = base::paste(base::gsub("_Channel_light|_Channel_medium|_Channel_heavy","",Sample_ID),"_all_ions_indices.RData",sep=""))
         }
-
-        if(min(features_select$RT_range_min) < Indices$RT_start[1])Indices$RT_start[1] <- min(features_select$RT_range_min)
-        if(max(features_select$RT_range_max) > Indices$RT_end[nrow(Indices)])Indices$RT_end[nrow(Indices)] <- max(features_select$RT_range_max)
 
         ###Fragment data into indexed RT windows to further improve subsetting speed
         data_frags <- list()
@@ -5118,114 +5182,121 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
 
       }else
       {
-        Indices <- base::as.data.frame(matrix(ncol=4,nrow=num_windows))
-        colnames(Indices) <- c("RT_start","RT_end","IM_start","IM_end")
-        Indices$RT_start <- sort(rep(((0:(num_windows_RT_only-1))*indexing_RT_window),num_IM_windows))
-        Indices$RT_end <- sort(rep(((1:num_windows_RT_only)*indexing_RT_window),num_IM_windows))
-        Indices$IM_start <- min_im + ((0:(num_IM_windows-1))*indexing_IM_window)
-        Indices$IM_end <- min_im + ((1:num_IM_windows)*indexing_IM_window)
+        if (file.exists(base::paste(base::gsub("_Channel_light|_Channel_medium|_Channel_heavy","",Sample_ID),"_all_ions_indices.RData",sep=""))) {
+          #indexing already performed, so load indexes, will load object Indices, and Indices_list into environment
+          load(file = base::paste(base::gsub("_Channel_light|_Channel_medium|_Channel_heavy","",Sample_ID),"_all_ions_indices.RData",sep=""))
+        } else {
+          Indices <- base::as.data.frame(matrix(ncol=4,nrow=num_windows))
+          colnames(Indices) <- c("RT_start","RT_end","IM_start","IM_end")
+          Indices$RT_start <- sort(rep(((0:(num_windows_RT_only-1))*indexing_RT_window),num_IM_windows))
+          Indices$RT_end <- sort(rep(((1:num_windows_RT_only)*indexing_RT_window),num_IM_windows))
+          Indices$IM_start <- min_im + ((0:(num_IM_windows-1))*indexing_IM_window)
+          Indices$IM_end <- min_im + ((1:num_IM_windows)*indexing_IM_window)
 
-        Indices_list <- list()
-        Indices_list_count <- 0
+          Indices_list <- list()
+          Indices_list_count <- 0
 
-        print("Indexing intensities")
-        max <- num_windows_RT_only
-        pb <- tcltk::tkProgressBar(title = base::paste("Indexing intensities:",Sample_ID),label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
-        start_time <- Sys.time()
-        updatecounter <- 0
-        time_require <- 0
-        start <- 1
-        end <- max
+          print("Indexing intensities")
+          max <- num_windows_RT_only
+          pb <- tcltk::tkProgressBar(title = base::paste("Indexing intensities:",Sample_ID),label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+          start_time <- Sys.time()
+          updatecounter <- 0
+          time_require <- 0
+          start <- 1
+          end <- max
 
-        cur_index <- 1
+          cur_index <- 1
 
-        ###increment per indexing
-        incr <- 10000
+          ###increment per indexing
+          incr <- 10000
 
-        for(i in 1:num_windows_RT_only)
-        {
-          start <- (i-1)*indexing_RT_window
-          end <- i*indexing_RT_window
-
-          indx <- cur_index
-          indx_prev <- cur_index
-          while(T)
+          for(i in 1:num_windows_RT_only)
           {
-            indx <- indx + incr
+            start <- (i-1)*indexing_RT_window
+            end <- i*indexing_RT_window
 
-            if(dat$RT[indx] >= end | indx > nrow(dat))
+            indx <- cur_index
+            indx_prev <- cur_index
+            while(T)
             {
-              break
-            }else
-            {
-              indx_prev <- indx
-            }
-          }
-          if(indx > nrow(dat))indx <- nrow(dat)
+              indx <- indx + incr
 
-          if(indx > indx_prev)
-          {
-            temp <- dat[indx_prev:indx,]
-
-            if(length(which(temp$RT < end)) > 0)
-            {
-              inds <- cur_index:(indx_prev-1+max(which(temp$RT < end)))
-              incr <- max(inds) + 1 - cur_index
-              temp <- dat[inds,]
-
-              ##now further subset based on IM
-              for(j in 1:num_IM_windows)
+              if(dat$RT[indx] >= end | indx > nrow(dat))
               {
-                start_im <- min_im + ((j-1)*indexing_IM_window)
-                end_im <- min_im + (j*indexing_IM_window)
-
-                indx_temp <- inds[which(temp$`1/K0` >= start_im & temp$`1/K0` <= end_im)]
-                Indices_list_count <- Indices_list_count + 1
-                if(length(indx_temp)>0)
-                {
-                  Indices_list[[Indices_list_count]] <- indx_temp
-                }else
-                {
-                  Indices_list[[Indices_list_count]] <- NA
-                }
+                break
+              }else
+              {
+                indx_prev <- indx
               }
-
-              cur_index <- max(inds) + 1
             }
-          }
+            if(indx > nrow(dat))indx <- nrow(dat)
 
-          if(Indices_list_count != (i*num_IM_windows))
-          {
-            missing <- (i*num_IM_windows) - Indices_list_count
-
-            for(j in 1:missing)
+            if(indx > indx_prev)
             {
-              Indices_list_count <- Indices_list_count + 1
-              Indices_list[[Indices_list_count]] <- NA
+              temp <- dat[indx_prev:indx,]
+
+              if(length(which(temp$RT < end)) > 0)
+              {
+                inds <- cur_index:(indx_prev-1+max(which(temp$RT < end)))
+                incr <- max(inds) + 1 - cur_index
+                temp <- dat[inds,]
+
+                ##now further subset based on IM
+                for(j in 1:num_IM_windows)
+                {
+                  start_im <- min_im + ((j-1)*indexing_IM_window)
+                  end_im <- min_im + (j*indexing_IM_window)
+
+                  indx_temp <- inds[which(temp$`1/K0` >= start_im & temp$`1/K0` <= end_im)]
+                  Indices_list_count <- Indices_list_count + 1
+                  if(length(indx_temp)>0)
+                  {
+                    Indices_list[[Indices_list_count]] <- indx_temp
+                  }else
+                  {
+                    Indices_list[[Indices_list_count]] <- NA
+                  }
+                }
+
+                cur_index <- max(inds) + 1
+              }
+            }
+
+            if(Indices_list_count != (i*num_IM_windows))
+            {
+              missing <- (i*num_IM_windows) - Indices_list_count
+
+              for(j in 1:missing)
+              {
+                Indices_list_count <- Indices_list_count + 1
+                Indices_list[[Indices_list_count]] <- NA
+              }
+            }
+
+            updatecounter <- updatecounter + 1
+            if(updatecounter >= 1)
+            {
+              time_elapsed <- difftime(Sys.time(),start_time,units="secs")
+              time_require <- (time_elapsed/(i/max))*(1-(i/max))
+              td <- lubridate::seconds_to_period(time_require)
+              time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
+
+              updatecounter <- 0
+              tcltk::setTkProgressBar(pb, i, label=base::paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
             }
           }
+          close(pb)
 
-          updatecounter <- updatecounter + 1
-          if(updatecounter >= 1)
+          if(any(is.na(Indices_list)))
           {
-            time_elapsed <- difftime(Sys.time(),start_time,units="secs")
-            time_require <- (time_elapsed/(i/max))*(1-(i/max))
-            td <- lubridate::seconds_to_period(time_require)
-            time_require <- sprintf('%02d:%02d:%02d', td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
-
-            updatecounter <- 0
-            tcltk::setTkProgressBar(pb, i, label=base::paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
+            remove <- which(is.na(Indices_list))
+            Indices <- Indices[-remove,]
+            na.omit.list <- function(y) { return(y[!sapply(y, function(x) all(is.na(x)))]) }
+            Indices_list <- na.omit.list(Indices_list)
           }
 
-        }
-        close(pb)
-
-        if(any(is.na(Indices_list)))
-        {
-          remove <- which(is.na(Indices_list))
-          Indices <- Indices[-remove,]
-          na.omit.list <- function(y) { return(y[!sapply(y, function(x) all(is.na(x)))]) }
-          Indices_list <- na.omit.list(Indices_list)
+          #store indexed data
+          save(Indices,Indices_list,file = base::paste(base::gsub("_Channel_light|_Channel_medium|_Channel_heavy","",Sample_ID),"_all_ions_indices.RData",sep=""))
         }
 
         ###Fragment data into indexed RT windows to further improve subsetting speed
@@ -5258,7 +5329,6 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
 
       rm(dat)
       crap <- gc(F)
-
 
       ###Now extract intensities,
       ###row1 = Intensity summed,
@@ -5885,14 +5955,1091 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
 
       }
 
+      rm(data_frags)
+      crap <- gc(F)
+
+    }
+
+    #equivalent function
+    get_intensities_tims <- function(Sample_ID,path,features_select,indexing_RT_window=0.1,RT_calibration,mz_calibration,peak_detection,ion_intensity_cutoff,mean_background_ion_intensity_model,sd_background_ion_intensity,peak_min_ion_count,kde_resolution,num_peaks_store,plots,MassSpec_mode,use_IM_data)
+    {
+      if(any(!is.na(mean_background_ion_intensity_model)))
+      {
+        colnames(mean_background_ion_intensity_model) <- base::gsub("-",".",colnames(mean_background_ion_intensity_model))
+        names(sd_background_ion_intensity) <- base::gsub("-",".",names(sd_background_ion_intensity))
+      }
+
+      ###if no peak selection should be performed, extract all ions within the expected feature windows
+      feature_no_peak_selection <- function(all_ion_data,selected_features,cur_sample,include_isotope_patterns = F,num_peaks_store=0,MassSpec_mode="Orbitrap",use_IM_data=T)
+      {
+        peak_ion_data_list <- list()
+
+        ###define RT and mz window
+        RT_expected <- selected_features$RT + selected_features[,base::paste("RT_calibration.",cur_sample,sep="")]
+        mz_expected <- selected_features$m.z + selected_features[,base::paste("mz_calibration.",cur_sample,sep="")]
+
+        RT_window <- c(RT_expected - (selected_features$RT_length/2),
+                       RT_expected + (selected_features$RT_length/2))
+
+        mz_window <- c(selected_features$m.z_range_min + selected_features[,base::paste("mz_calibration.",cur_sample,sep="")],
+                       selected_features$m.z_range_max + selected_features[,base::paste("mz_calibration.",cur_sample,sep="")])
+
+        im_expected <- selected_features$Inv_K0 + selected_features[,base::paste("IM_calibration.",cur_sample,sep="")]
+
+        IM_window <- c(im_expected - (selected_features$Inv_K0_length/2),
+                       im_expected + (selected_features$Inv_K0_length/2))
+
+        ###select relevant ions
+        if(use_IM_data == T)
+        {
+          ion_data <- all_ion_data[which(all_ion_data$m.z >= mz_window[1] &
+                                           all_ion_data$m.z <= mz_window[2] &
+                                           all_ion_data$RT >= RT_window[1] &
+                                           all_ion_data$RT <= RT_window[2] &
+                                           all_ion_data$`1/K0` >= IM_window[1] &
+                                           all_ion_data$`1/K0` <= IM_window[2]),]
+        }else
+        {
+          ion_data <- all_ion_data[which(all_ion_data$m.z >= mz_window[1] &
+                                           all_ion_data$m.z <= mz_window[2] &
+                                           all_ion_data$RT >= RT_window[1] &
+                                           all_ion_data$RT <= RT_window[2]),]
+        }
+        ion_data <- stats::na.omit(cbind(ion_data,data.frame(isotope=0)))
+
+        #ion_data$isotope=0
+
+        peak_ion_data_list[[as.character(num_peaks_store+1)]] <- list(ion_data=ion_data,
+                                                                      Peak_info=base::data.frame(RT=RT_expected,
+                                                                                                 RT_window_lower=RT_window[1],
+                                                                                                 RT_window_upper=RT_window[2],
+                                                                                                 mz=mz_expected,
+                                                                                                 mz_window_lower=mz_window[1],
+                                                                                                 mz_window_upper=mz_window[2],
+                                                                                                 density=0,
+                                                                                                 known_peak=0,
+                                                                                                 Peak=num_peaks_store+1,
+                                                                                                 ion_count=nrow(ion_data)))
+
+        names(peak_ion_data_list) <- "Standard"
+        return(peak_ion_data_list)
+
+      }
+
+      ###if peak selection should be performed
+      feature_2D_peak_selection <- function(all_ion_data,selected_features,cur_sample,known_RT,delta_mz,delta_rt,RT_window_expand_factor=5,IM_window_expand_factor=5,mz_window_expand_factor=4,include_isotope_patterns = F,n_raster_dens_matrix=50,local_maxima_k=3,max_delta_RT=2,max_delta_mz=0.005,peak_min_ion_count=5,RT_bw=0.5,mz_bw=0.002,num_peaks_store=5,plot=F,auto_adjust_kde_resolution=T,MassSpec_mode="Orbitrap",delta_im=0.001,close_peak_merging=F,use_IM_data=T)
+      {
+        peak_ion_data_list <- list()
+
+        graph <- NA ##here we store graphical output if wanted
+
+        ###define RT and mz window
+        RT_correction <- as.numeric(selected_features[base::paste("RT_calibration.",cur_sample,sep="")])
+        mz_correction <- as.numeric(selected_features[base::paste("mz_calibration.",cur_sample,sep="")])
+
+        RT_expected <- as.numeric(selected_features$RT+RT_correction)
+        mz_expected <- as.numeric(selected_features$m.z+mz_correction)
+
+
+        if(delta_rt > selected_features$RT_length/2) ###use standard window as long as the peak width is < standard RT window
+        {
+          RT_window <- c(selected_features$RT_range_min + RT_correction,
+                         selected_features$RT_range_max + RT_correction)
+        }else
+        {
+          RT_window <- c(selected_features$RT + RT_correction - (selected_features$RT_length/2),
+                         selected_features$RT + RT_correction + (selected_features$RT_length/2))
+        }
+
+        mz_window <- c(selected_features$m.z_range_min + mz_correction,
+                       selected_features$m.z_range_max + mz_correction)
+
+        RT_window_expanded <- c(RT_window[1]-((delta_rt)*RT_window_expand_factor),
+                                RT_window[2]+((delta_rt)*RT_window_expand_factor))
+
+        if(RT_window_expanded[2]-RT_window_expanded[1] > 10) ###maximum 10 min deviation
+        {
+          RT_window_expanded[1] <- RT_window[1]-5
+          RT_window_expanded[2] <- RT_window[2]+5
+        }
+
+        mz_window_expanded <- c(mz_window[1]-(delta_mz*mz_window_expand_factor),
+                                mz_window[2]+(delta_mz*mz_window_expand_factor))
+
+        IM_correction <- as.numeric(selected_features[base::paste("IM_calibration.",cur_sample,sep="")])
+        IM_expected <- as.numeric(selected_features$Inv_K0+IM_correction)
+
+        if(delta_im > selected_features$Inv_K0_length/2) ###use standard window as long as the peak width is < standard IM window
+        {
+          IM_window <- c(selected_features$Inv_K0_range_min + IM_correction,
+                         selected_features$Inv_K0_range_max + IM_correction)
+        }else
+        {
+          IM_window <- c(selected_features$Inv_K0 + IM_correction - (selected_features$Inv_K0_length/2),
+                         selected_features$Inv_K0 + IM_correction + (selected_features$Inv_K0_length/2))
+        }
+        IM_window_expanded <- c(IM_window[1]-(delta_im*IM_window_expand_factor),
+                                IM_window[2]+(delta_im*IM_window_expand_factor))
+
+        ion_data <- all_ion_data
+        # if(use_IM_data == T)
+        # {
+        #   ion_data <- all_ion_data[which(all_ion_data$m.z >= mz_window_expanded[1] &
+        #                                    all_ion_data$m.z <= mz_window_expanded[2] &
+        #                                    all_ion_data$RT >= RT_window_expanded[1] &
+        #                                    all_ion_data$RT <= RT_window_expanded[2] &
+        #                                    all_ion_data$`1/K0` >= IM_window[1] &
+        #                                    all_ion_data$`1/K0` <= IM_window[2]),]
+        # }else
+        # {
+        #   ion_data <- all_ion_data[which(all_ion_data$m.z >= mz_window_expanded[1] &
+        #                                    all_ion_data$m.z <= mz_window_expanded[2] &
+        #                                    all_ion_data$RT >= RT_window_expanded[1] &
+        #                                    all_ion_data$RT <= RT_window_expanded[2]),]
+        # }
+
+        ion_data <- stats::na.omit(cbind(ion_data,data.frame(isotope=0)))
+        #ion_data$isotope=0
+
+        ##add isotope ions if wanted
+        if(include_isotope_patterns == T & nrow(ion_data)>0)
+        {
+          iso_mult <- (1:3)*1.002054
+
+          cur_charge <- selected_features$Charge
+          cur_mz_min = mz_window_expanded[1]
+          cur_mz_max = mz_window_expanded[2]
+          for(isos in c(1,2,3))###isotope +1,+2,+3
+          {
+            mz_range <- c(((cur_mz_min*cur_charge)+(iso_mult[isos]))/cur_charge,((cur_mz_max*cur_charge)+(iso_mult[isos]))/cur_charge)
+
+            selection <- which(all_ion_data$m.z >= mz_range[1] &
+                                 all_ion_data$m.z <= mz_range[2] &
+                                 all_ion_data$RT >= RT_window_expanded[1] &
+                                 all_ion_data$RT <= RT_window_expanded[2])
+            if(length(selection)>0)
+            {
+              temp <- all_ion_data[selection,]
+              temp$isotope=isos
+              ion_data <- rbind(ion_data,temp)
+            }else
+            {
+              break
+            }
+          }
+
+          ion_data <- ion_data[order(ion_data$RT),]
+          ###only keep isotope ions which are present in spectra where also the previous isotope ions was detected
+          for(iso in c(1,2,3))
+          {
+            if(length(which(ion_data$isotope == iso))>0 & length(which(ion_data$isotope == iso-1))>0)
+            {
+              iso_current <- which(ion_data$isotope == iso)
+
+              iso_minus1 <- ion_data[which(ion_data$isotope == iso-1),]
+
+              remove <- which(ion_data$RT[iso_current] %not in% iso_minus1$RT)
+              if(length(remove)>0)iso_current <- iso_current[remove]
+              if(length(iso_current)>0)ion_data <- ion_data[-iso_current,]
+            }else
+            {
+              remove <- which(ion_data$isotope == iso)
+              if(length(remove)>0)ion_data <- ion_data[-remove,]
+            }
+          }
+
+          ###correct m/z of +1,+2 and +3 isotope ions to its theoretical +0 isotope m/z
+          ion_data$m.z <- ((ion_data$m.z*cur_charge)-(ion_data$isotope*1.002054))/cur_charge
+        }
+
+        if(nrow(ion_data) >= peak_min_ion_count)
+        {
+          ###determine 2D density matrix
+          #consider different resolutions required for peaks with expected small RT lengths
+          if(auto_adjust_kde_resolution==T)
+          {
+            required_res <- ceiling(((RT_window_expanded[2]-RT_window_expanded[1])/((selected_features$RT_length/1.9)*2))+1)
+            if(required_res > n_raster_dens_matrix)n_raster_dens_matrix <- required_res
+          }
+
+          f2 <- MASS::kde2d(ion_data$RT, ion_data$m.z, n = n_raster_dens_matrix,
+                            h = c(RT_bw, mz_bw),lims = c(RT_window_expanded[1],RT_window_expanded[2],mz_window_expanded[1],mz_window_expanded[2]))
+
+          #area_per_cell <- ((max(f2$x)-min(f2$x)))*((max(f2$y)-min(f2$y)))/2
+
+          ###determine which density (=z) will be selected to be at least exceeded --> upper whisker
+          outlier_densities <- grDevices::boxplot.stats(f2$z)$stats[5]
+
+          ## Convert it to a raster object
+          r <- raster::raster(f2$z)
+          raster::extent(r) <- raster::extent(c(0, length(f2$x), 0, length(f2$y)) + 0.5)
+
+          ## Find the maximum value within the k-cell neighborhood of each cell
+          f <- function(X) max(X, na.rm=TRUE)
+          ww <- matrix(1, nrow=local_maxima_k, ncol=local_maxima_k) ## Weight matrix for cells in moving window
+          localmax <- raster::focal(r, fun=f, w=ww, pad=TRUE, padValue=NA)
+
+          ## Get x-y coordinates of those cells that are local maxima
+          r2 <- r==localmax
+          maxXY <- raster::xyFromCell(r2, raster::Which(r2==1, cells=TRUE))
+
+          ## Remove maxima which are below the minimal outlier density
+          maxima <- base::data.frame(RT=f2$x[n_raster_dens_matrix-maxXY[,2]+1],mz=f2$y[maxXY[,1]],density=f2$z[((maxXY[,1]-1)*n_raster_dens_matrix)+(n_raster_dens_matrix-maxXY[,2]+1)])
+          maxima <- maxima[which(maxima$density > outlier_densities),]
+          ###next filter for maxima with at least peak_min_ion_count ions
+          maxima$estimated_count <- (maxima$density/sum(as.matrix(maxima$density)))*nrow(ion_data)
+
+          RT_cut <- selected_features$RT_length/2#ifelse(!is.na(known_RT),selected_features$RT_length/2,delta_rt)
+          selection <- which(maxima$estimated_count >= peak_min_ion_count | abs(maxima$RT-RT_expected)<=RT_cut & abs(maxima$mz-mz_expected)<=delta_mz)
+          ###if no maxima are left after filtering still take topN closest peak further
+          if(length(selection)==0 & nrow(maxima) > 0)
+          {
+            ###no maxima would be left see keep up to N peaks
+            distances <- base::data.frame(dist_rt=maxima$RT-RT_expected,
+                                          dist_mz=maxima$mz-mz_expected,
+                                          dist_total_scaled=sqrt(((maxima$RT-RT_expected))^2 + ((maxima$mz-mz_expected)*500)^2))
+
+
+            ###at maximum the top N closest maxima
+            ordering <- order(abs(distances$dist_total_scaled))
+            maxima <- maxima[ordering,]
+            if(nrow(maxima)>num_peaks_store) maxima <- maxima[1:num_peaks_store,]
+          }else if(nrow(maxima) > 0)
+          {
+            maxima <- maxima[selection,]
+          }
+
+          ###next merge peaks which are very close together
+          if(nrow(maxima)>1 & close_peak_merging == T)
+          {
+            close_info <- base::as.data.frame(matrix(ncol=2,nrow=nrow(maxima),0))
+
+            for(cl in 1:nrow(maxima))
+            {
+              temp <- sqrt((maxima$RT[cl]-maxima$RT)^2+((maxima$mz[cl]-maxima$mz)*500)^2)
+              sel <- which(temp == min(temp[-cl]))[1]
+              data.table::set(close_info,as.integer(cl),as.integer(1:2),value = list(temp[sel],sel))
+            }
+
+            dist_cut <- sqrt((delta_mz*500)^2+(selected_features$RT_length/4)^2) ###merge peaks with d_mz < 0.001 and d_RT < peak_width/2
+            if(any(close_info$V1 < dist_cut))
+            {
+              sel <- which(close_info$V1 < dist_cut)
+
+              maxima_add <- base::as.data.frame(matrix(nrow=length(sel),ncol=4,0))
+              colnames(maxima_add) <- colnames(maxima)
+              ###find mean RT and mz of maxima which should be merged wheigted by density
+              for(cl in 1:length(sel))
+              {
+                RT_add <- stats::weighted.mean(c(maxima$RT[sel[cl]],maxima$RT[close_info[sel[cl],2]]),
+                                               c(maxima$density[sel[cl]],maxima$density[close_info[sel[cl],2]]))
+                mz_add <- stats::weighted.mean(c(maxima$mz[sel[cl]],maxima$mz[close_info[sel[cl],2]]),
+                                               c(maxima$density[sel[cl]],maxima$density[close_info[sel[cl],2]]))
+                density_add <- stats::weighted.mean(c(maxima$density[sel[cl]],maxima$density[close_info[sel[cl],2]]),
+                                                    c(maxima$density[sel[cl]],maxima$density[close_info[sel[cl],2]]))
+                count_add <- stats::weighted.mean(c(maxima$estimated_count[sel[cl]],maxima$estimated_count[close_info[sel[cl],2]]),
+                                                  c(maxima$density[sel[cl]],maxima$density[close_info[sel[cl],2]]))
+                data.table::set(maxima_add,as.integer(cl),as.integer(1:4),value=list(RT_add,mz_add,density_add,count_add))
+              }
+              maxima_add <- unique(maxima_add)
+              ###remove maxima which are merged
+              remove <- unique(append(sel,close_info[sel,2]))
+              maxima <- maxima[-remove,]
+              ###add new merged peaks
+              maxima <- rbind(maxima,maxima_add)
+            }
+          }
+
+          ###now check which density maxima is closest to the expected feature
+          if(nrow(maxima)>0)
+          {
+            distances <- base::data.frame(dist_rt=maxima$RT-RT_expected,
+                                          dist_mz=maxima$mz-mz_expected,
+                                          dist_total_scaled=sqrt(((maxima$RT-RT_expected))^2 + ((maxima$mz-mz_expected)*500)^2))
+            ###at maximum the top N closest maxima
+            ordering <- order(abs(distances$dist_total_scaled))
+            maxima_select <- maxima[ordering,]#which(abs(distances$dist_rt[ordering]) <= max_delta_RT & abs(distances$dist_mz[ordering]) <= max_delta_mz),]
+
+            if(nrow(maxima_select)>num_peaks_store) maxima_select <- maxima_select[1:num_peaks_store,]
+
+            if(nrow(maxima_select)>0)
+            {
+              ###label which peak was closest to expected feature RT and mz if known
+              maxima_select$known_peak <- 0
+              if(!is.na(known_RT))
+              {
+                ###RT is known
+                ###check if any peak was detected close to known RT (max deviation by peak width/2)
+                peak_close_rt <- which(abs(maxima_select$RT - RT_expected) <= selected_features$RT_length/1.9 & abs(maxima_select$mz - mz_expected) <= delta_mz/1.9)
+                ###and if the closest peak actually also shows a good number of ions
+                ###otherwise no peak will be selected here but selection will be done later
+                if(length(peak_close_rt)>0 & maxima_select$estimated_count[1] >= 2* peak_min_ion_count)
+                {
+                  maxima_select$known_peak[peak_close_rt[1]] <- 1
+                  ###reorder maxima selected such that known peak maximum is at index 1
+                  maxima_select <- maxima_select[c(peak_close_rt[1],c(1:nrow(maxima_select))[-peak_close_rt[1]]),]
+                }else ###peak RT is known but none of the detected peaks shows RT close to the known RT
+                {
+                  ###in this case none of the maxima are set to be the known peak and later we will try to decide which one is the correct one
+                }
+              }
+              ###if any maximum was detected, return table of ions as a list containing up to 3 peak area ion lists from closest to further away peaks.
+              RT_window_width <- selected_features$RT_length
+              mz_window_width <- delta_mz
+
+              peak_counter=0
+
+              for(i in 1:nrow(maxima_select))
+              {
+                cur_mz_window <- c(maxima_select$mz[i]-(mz_window_width),
+                                   maxima_select$mz[i]+(mz_window_width))
+                cur_RT_window <- c(maxima_select$RT[i]-(RT_window_width/2),
+                                   maxima_select$RT[i]+(RT_window_width/2))
+
+                selection <- which(ion_data$m.z >= cur_mz_window[1] &
+                                     ion_data$m.z <= cur_mz_window[2] &
+                                     ion_data$RT >= cur_RT_window[1] &
+                                     ion_data$RT <= cur_RT_window[2])
+
+                if(length(selection)<peak_min_ion_count & maxima_select$known_peak[i] == 1)maxima_select$known_peak[i] <- 0 ###if this peak should be the correct peak but number of ions are very low then set to unknown correct peak
+
+                peak_counter <- peak_counter + 1
+
+                peak_ion_data_list[[peak_counter]] <- list(ion_data=ion_data[selection,],
+                                                           Peak_info=base::data.frame(RT=maxima_select$RT[i],
+                                                                                      RT_window_lower=cur_RT_window[1],
+                                                                                      RT_window_upper=cur_RT_window[2],
+                                                                                      mz=maxima_select$mz[i],
+                                                                                      mz_window_lower=cur_mz_window[1],
+                                                                                      mz_window_upper=cur_mz_window[2],
+                                                                                      density=maxima_select$density[i],
+                                                                                      known_peak=maxima_select$known_peak[i],
+                                                                                      Peak=peak_counter,
+                                                                                      ion_count=length(selection)))
+
+              }
+              if(peak_counter>0)names(peak_ion_data_list) <- as.character(1:peak_counter)
+              cur_RT_window <- c(RT_expected-(RT_window_width/2),RT_expected+(RT_window_width/2))
+              ###also add quantification if standard windows are used
+              selection <- which(ion_data$m.z >= mz_window[1] &
+                                   ion_data$m.z <= mz_window[2] &
+                                   ion_data$RT >= cur_RT_window[1] &
+                                   ion_data$RT <= cur_RT_window[2])
+              peak_ion_data_list[[as.character(num_peaks_store+1)]] <- list(ion_data=ion_data[selection,],
+                                                                            Peak_info=base::data.frame(RT=RT_expected,
+                                                                                                       RT_window_lower=cur_RT_window[1],
+                                                                                                       RT_window_upper=cur_RT_window[2],
+                                                                                                       mz=mz_expected,
+                                                                                                       mz_window_lower=mz_window[1],
+                                                                                                       mz_window_upper=mz_window[2],
+                                                                                                       density=0,
+                                                                                                       known_peak=0,
+                                                                                                       Peak=num_peaks_store+1,
+                                                                                                       ion_count=length(selection)))
+              ###plot should be directly generated
+              if(plot==T)
+              {
+                graphics::image(f2,main=base::paste(cur_sample,"-",selected_features$Feature_name),xlab="RT",ylab="m/z",xlim=RT_window_expanded,ylim=mz_window_expanded)
+                #graphics::points(maxima_select$RT,maxima_select$mz)
+                graphics::text(maxima_select$RT,maxima_select$mz,1:nrow(maxima_select),col="black")
+                ###expected window
+                graphics::rect(cur_RT_window[1],mz_window[1],cur_RT_window[2],mz_window[2],lty=2)
+                graphics::points(RT_expected,mz_expected,pch=4)
+                ###adjusted window
+
+                graphics::rect(maxima_select$RT-RT_window_width/2,maxima_select$mz-mz_window_width,maxima_select$RT+RT_window_width/2,maxima_select$mz+mz_window_width,lty=2,border=ifelse(maxima_select$known_peak==1,"green","darkgrey"))
+
+                ###add label indicating intensity within the window
+                for(i in 1:length(peak_ion_data_list))
+                {
+                  sum_intensity <- sum(sum(peak_ion_data_list[[i]]$ion_data$Intensity))
+                  if(sum_intensity > 0)sum_intensity <- base::log2(sum_intensity)
+                  if(peak_ion_data_list[[i]]$Peak_info$Peak != num_peaks_store+1)
+                  {
+                    graphics::text(peak_ion_data_list[[i]]$Peak_info$RT,peak_ion_data_list[[i]]$Peak_info$mz-(1.1*delta_mz),round(sum_intensity,2),col=ifelse(peak_ion_data_list[[i]]$Peak_info$known_peak==1,"green","darkgrey"))
+                  }else
+                  {
+                    graphics::text(peak_ion_data_list[[i]]$Peak_info$RT,peak_ion_data_list[[i]]$Peak_info$mz+(1.1*delta_mz),round(sum_intensity,2),col="black")
+                  }
+
+                }
+              }else ###store all relevant data for performing plotting later
+              {
+                peak_intensities <- base::as.data.frame(matrix(ncol=1,nrow=length(peak_ion_data_list)))
+                peak_intensities[,1] <- as.numeric(peak_intensities[,1])
+
+                for(i in 1:length(peak_ion_data_list))
+                {
+                  sum_intensity <- sum(sum(peak_ion_data_list[[i]]$ion_data$Intensity))
+                  if(sum_intensity > 0)sum_intensity <- base::log2(sum_intensity)
+                  data.table::set(peak_intensities,as.integer(i),as.integer(1),sum_intensity)
+                }
+                graph <- list(kdemap=f2,
+                              maxima_select=maxima_select,
+                              peak_intensities=peak_intensities)
+              }
+            }else ###no maxima with a minmal density found
+            {
+              ###in this case simply extract ions which are within the expected window
+              RT_window_width <- selected_features$RT_length
+              cur_RT_window <- c(RT_expected-(RT_window_width/2),RT_expected+(RT_window_width/2))
+
+              selection <- which(ion_data$m.z >= mz_window[1] &
+                                   ion_data$m.z <= mz_window[2] &
+                                   ion_data$RT >= cur_RT_window[1] &
+                                   ion_data$RT <= cur_RT_window[2])
+              peak_ion_data_list[[as.character(num_peaks_store+1)]] <- list(ion_data=ion_data[selection,],
+                                                                            Peak_info=base::data.frame(RT=RT_expected,
+                                                                                                       RT_window_lower=cur_RT_window[1],
+                                                                                                       RT_window_upper=cur_RT_window[2],
+                                                                                                       mz=mz_expected,
+                                                                                                       mz_window_lower=mz_window[1],
+                                                                                                       mz_window_upper=mz_window[2],
+                                                                                                       density=0,
+                                                                                                       known_peak=0,
+                                                                                                       Peak=4,
+                                                                                                       ion_count=length(selection)))
+            }
+
+          }else ###no maxima found
+          {
+            ###in this case simply extract ions which are within the expected window
+            RT_window_width <- selected_features$RT_length
+            cur_RT_window <- c(RT_expected-(RT_window_width/2),RT_expected+(RT_window_width/2))
+
+            selection <- which(ion_data$m.z >= mz_window[1] &
+                                 ion_data$m.z <= mz_window[2] &
+                                 ion_data$RT >= cur_RT_window[1] &
+                                 ion_data$RT <= cur_RT_window[2])
+            peak_ion_data_list[[as.character(num_peaks_store+1)]] <- list(ion_data=ion_data[selection,],
+                                                                          Peak_info=base::data.frame(RT=RT_expected,
+                                                                                                     RT_window_lower=cur_RT_window[1],
+                                                                                                     RT_window_upper=cur_RT_window[2],
+                                                                                                     mz=mz_expected,
+                                                                                                     mz_window_lower=mz_window[1],
+                                                                                                     mz_window_upper=mz_window[2],
+                                                                                                     density=0,
+                                                                                                     known_peak=0,
+                                                                                                     Peak=4,
+                                                                                                     ion_count=length(selection)))
+          }
+        }else
+        {
+          ###not enough ions even in expanded window
+          ###in this case simply extract ions which are within the expected window
+          RT_window_width <- selected_features$RT_length
+          cur_RT_window <- c(RT_expected-(RT_window_width/2),RT_expected+(RT_window_width/2))
+
+          selection <- which(ion_data$m.z >= mz_window[1] &
+                               ion_data$m.z <= mz_window[2] &
+                               ion_data$RT >= cur_RT_window[1] &
+                               ion_data$RT <= cur_RT_window[2])
+          peak_ion_data_list[[as.character(num_peaks_store+1)]] <- list(ion_data=ion_data[selection,],
+                                                                        Peak_info=base::data.frame(RT=RT_expected,
+                                                                                                   RT_window_lower=cur_RT_window[1],
+                                                                                                   RT_window_upper=cur_RT_window[2],
+                                                                                                   mz=mz_expected,
+                                                                                                   mz_window_lower=mz_window[1],
+                                                                                                   mz_window_upper=mz_window[2],
+                                                                                                   density=0,
+                                                                                                   known_peak=0,
+                                                                                                   Peak=4,
+                                                                                                   ion_count=length(selection)))
+        }
+
+        names(peak_ion_data_list)[which(names(peak_ion_data_list) != as.character(num_peaks_store+1))] <- base::paste("Peak_",names(peak_ion_data_list)[which(names(peak_ion_data_list) != as.character(num_peaks_store+1))],sep="")
+        names(peak_ion_data_list)[which(names(peak_ion_data_list) == as.character(num_peaks_store+1))] <- "Standard"
+        peak_ion_data_list$graph <- graph
+        return(peak_ion_data_list)
+      }
+
+      `%not in%` <- function (x, table) is.na(match(x, table, nomatch=NA_integer_))
+
+      t.test2 <- function(...) ###T-test
+      {
+        obj<-try(stats::t.test(...), silent=TRUE)
+        if (methods::is(obj, "try-error")) return(NA) else return(obj$p.value)
+      }
+
+      setwd(path)
+
+      max <- 1
+      print("Load spectra data")
+      pb <- tcltk::tkProgressBar(title = base::paste("Load spectra data:",Sample_ID),label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+      if (grepl("_Channel_light|_Channel_medium|_Channel_heavy",Sample_ID))#SILAC mode --- all channels in one raw file
+      {
+        dat = timsr::TimsR(base::paste(base::gsub("_Channel_light|_Channel_medium|_Channel_heavy","",Sample_ID),".d",sep=""))
+      } else
+      {
+        dat = timsr::TimsR(base::paste(Sample_ID,".d",sep=""))
+      }
+
+      sel <- timsr::MS1(dat) #get all MS1 frames
+
+      dat_ms1_frames <- dat@frames[sel,]
+      dat_ms1_frames$Time <- dat_ms1_frames$Time/60
+
+      dat_ms1_frames <- dat_ms1_frames[which(dat_ms1_frames$Time >= min(features_select$RT) & dat_ms1_frames$Time <= max(features_select$RT)),]
+
+      tcltk::setTkProgressBar(pb, 1, label=base::paste( round(1/max*100, 0)," % done (",1,"/",max,")",sep = ""))
+      close(pb)
+
+      ###Now extract intensities,
+      ###row1 = Intensity summed,
+      ###row2 = num ions,
+      ###row3 = mean intensity,
+      ###row4 = sd intensity,
+      ###row5 = detected optimum mz window minimum
+      ###row6 = detected optimum mz window maximum
+      ###row7 = detected optimum RT window minimum
+      ###row8 = detected optimum RT window maximum
+      ###row9 = number of detected peaks
+
+      if(peak_detection == F)
+      {
+        graph_peaks <- list()
+        peaks_quant <- list()
+
+        Intensities <- base::as.data.frame(matrix(nrow=10,ncol=nrow(features_select),0))
+        colnames(Intensities) <- features_select$Feature_name
+
+        ###if cut off pvalue is defined then store background quantifications separately
+        if(ion_intensity_cutoff == T)
+        {
+          Intensities_signal_background <- base::as.data.frame(matrix(nrow=10,ncol=nrow(features_select),0))
+          colnames(Intensities_signal_background ) <- features_select$Feature_name
+        }
+
+        ###store data for calculating scoring per sample and feature
+        delta_T1 <- base::as.data.frame(matrix(nrow=1,ncol=nrow(features_select),0))
+        colnames(delta_T1) <- features_select$Feature_name
+        delta_T2 <- base::as.data.frame(matrix(nrow=1,ncol=nrow(features_select),0))
+        colnames(delta_T2) <- features_select$Feature_name
+        delta_M1 <- base::as.data.frame(matrix(nrow=1,ncol=nrow(features_select),0))
+        colnames(delta_M1) <- features_select$Feature_name
+        delta_M2 <- base::as.data.frame(matrix(nrow=1,ncol=nrow(features_select),0))
+        colnames(delta_M2) <- features_select$Feature_name
+      }else
+      {
+        graph_peaks <- list()
+        peaks_quant <- list()
+
+        for(p in 1:(num_peaks_store+1)) ###1-num_peaks_store stores the quantification for top closest peaks while last stores total quantification of the window
+        {
+          Intensities <- base::as.data.frame(matrix(nrow=10,ncol=nrow(features_select),0))
+          colnames(Intensities) <- features_select$Feature_name
+
+          ###if cut off pvalue is defined then store background quantifications separately
+          if(ion_intensity_cutoff == T)
+          {
+            Intensities_signal_background <- base::as.data.frame(matrix(nrow=10,ncol=nrow(features_select),0))
+            colnames(Intensities_signal_background ) <- features_select$Feature_name
+          }
+          ###store data for calculating scoring per sample and feature
+          delta_T1 <- base::as.data.frame(matrix(nrow=1,ncol=nrow(features_select),0))
+          colnames(delta_T1) <- features_select$Feature_name
+          delta_T2 <- base::as.data.frame(matrix(nrow=1,ncol=nrow(features_select),0))
+          colnames(delta_T2) <- features_select$Feature_name
+          delta_M1 <- base::as.data.frame(matrix(nrow=1,ncol=nrow(features_select),0))
+          colnames(delta_M1) <- features_select$Feature_name
+          delta_M2 <- base::as.data.frame(matrix(nrow=1,ncol=nrow(features_select),0))
+          colnames(delta_M2) <- features_select$Feature_name
+
+          peaks_quant[[p]] <- list(Intensities=Intensities,
+                                   Intensities_signal_background=Intensities_signal_background,
+                                   delta_T1=delta_T1,
+                                   delta_T2=delta_T2,
+                                   delta_M1=delta_M1,
+                                   delta_M2=delta_M2)
+        }
+        names(peaks_quant)[1:num_peaks_store] <- base::paste("Peak_",1:num_peaks_store,sep="")
+        names(peaks_quant)[num_peaks_store+1] <- "Standard"
+
+      }
+
+      print("Extracting intensities")
+      max <- nrow(features_select)
+      pb <- tcltk::tkProgressBar(title = base::paste("Extracting intensities:",Sample_ID),label=base::paste( round(0/max*100, 0),"% done"), min = 0,max = max, width = 300)
+      start_time <- Sys.time()
+      updatecounter <- 0
+      time_require <- 0
+      end <- max
+
+      Sample_ID_save <- Sample_ID
+      Sample_ID <- base::gsub("-",".",Sample_ID)
+
+      iso_mult <- (1:3)*1.002054
+
+      peak_width_stats <- grDevices::boxplot.stats(features_select$RT_length)$stats
+      delta_mz <- stats::median(features_select$m.z - features_select$m.z_range_min,na.rm=T)
+      delta_rt <- stats::median(features_select$RT - features_select$RT_range_min,na.rm=T)/2
+
+      known_RTs <- base::as.data.frame(stringr::str_split(features_select$Observed_RT,";",simplify = T))
+      colnames(known_RTs) <- base::substr(colnames(features_select)[which(grepl("RT_calibration",colnames(features_select)))],16,1000)
+      known_RTs[] <- lapply(known_RTs, function(x) as.numeric(as.character(x)))
+      known_RTs_all <- known_RTs
+      known_RTs <- known_RTs[,Sample_ID]
+
+      RT_window_expand_factor <- 5 ###expand RT window around expected window for 2Dpeak detection
+      mz_window_expand_factor <- 4
+
+      IM_width_stats <- grDevices::boxplot.stats(features_select$Inv_K0_length)$stats
+      delta_im <- stats::median(features_select$Inv_K0 - features_select$Inv_K0_range_min,na.rm=T)/2
+
+      known_IMs <- base::as.data.frame(stringr::str_split(features_select$Observed_IM,";",simplify = T))
+      colnames(known_IMs) <- base::substr(colnames(features_select)[which(grepl("IM_calibration",colnames(features_select)))],16,1000)
+      known_IMs[] <- lapply(known_IMs, function(x) as.numeric(as.character(x)))
+      known_IMs_all <- known_IMs
+      known_IMs <- known_IMs[,Sample_ID]
+
+      IM_window_expand_factor <- 5
+      delta_im <- stats::median(features_select$Inv_K0 - features_select$Inv_K0_range_min,na.rm=T)/2
+
+      if(plots == T)
+      {
+        dir.create(base::paste(path,"/2Dpeakselection",sep=""))
+        dir.create(base::paste(path,"/2Dpeakselection/",Sample_ID,sep=""))
+      }
+
+      for(i in 1:nrow(features_select))
+      {
+        ###extract all relevant ions in RT window
+        RT_correction <- ifelse(RT_calibration == T,features_select[i,base::paste("RT_calibration.",Sample_ID,sep="")],0)
+        IM_correction <- features_select[i,base::paste("IM_calibration.",Sample_ID,sep="")]
+        mz_correction <- features_select[i,base::paste("mz_calibration.",Sample_ID,sep="")]
+
+        if(peak_detection == T)# & !grepl("_d",features_select$Feature_name[i]))
+        {
+          RT_expected <- as.numeric(features_select$RT[i]+RT_correction)
+          mz_expected <- as.numeric(features_select$m.z[i]+mz_correction)
+          IM_expected <- as.numeric(features_select$Inv_K0[i]+IM_correction)
+
+          if(delta_rt > features_select$RT_length[i]/2) ###use standard window as long as the peak width is < standard RT window
+          {
+            RT_window <- c(features_select$RT_range_min[i] + RT_correction,
+                           features_select$RT_range_max[i] + RT_correction)
+          }else
+          {
+            RT_window <- c(features_select$RT[i] + RT_correction - (features_select$RT_length[i]/2),
+                           features_select$RT[i] + RT_correction + (features_select$RT_length[i]/2))
+          }
+
+          RT_window_expanded <- c(RT_window[1]-((delta_rt)*RT_window_expand_factor),
+                                  RT_window[2]+((delta_rt)*RT_window_expand_factor))
+
+          if(RT_window_expanded[2]-RT_window_expanded[1] > 10) ###maximum 10 min deviation
+          {
+            RT_window_expanded[1] <- RT_window[1]-5
+            RT_window_expanded[2] <- RT_window[2]+5
+          }
+
+          mz_window <- c(features_select$m.z_range_min[i] + mz_correction,
+                         features_select$m.z_range_max[i] + mz_correction)
+
+          mz_window_expanded <- c(mz_window[1]-(delta_mz*mz_window_expand_factor),
+                                  mz_window[2]+(delta_mz*mz_window_expand_factor))
+
+
+          if(delta_im > features_select$Inv_K0_length[i]/2) ###use standard window as long as the peak width is < standard IM window
+          {
+            IM_window <- c(features_select$Inv_K0_range_min[i] + IM_correction,
+                           features_select$Inv_K0_range_max[i] + IM_correction)
+          }else
+          {
+            IM_window <- c(features_select$Inv_K0[i] + IM_correction - (features_select$Inv_K0_length[i]/2),
+                           features_select$Inv_K0[i] + IM_correction + (features_select$Inv_K0_length[i]/2))
+          }
+          IM_window_expanded <- c(IM_window[1]-(delta_im*IM_window_expand_factor),
+                                  IM_window[2]+(delta_im*IM_window_expand_factor))
+
+          #get frames
+          frames <- dat_ms1_frames$Id[which(dat_ms1_frames$Time >= RT_window_expanded[1] & dat_ms1_frames$Time <= RT_window_expanded[2])]
+
+          RT_window_expanded <- RT_window_expanded * 60
+
+          #get peaks
+          sub <- lapply(frames,function(x) {
+            temp <- dat[x,c('mz','retention_time','intensity','inv_ion_mobility')]
+            temp <- temp[which(temp$mz >= mz_window_expanded[1] &
+                                 temp$mz <= mz_window_expanded[2]),]
+            temp <- temp[which(temp$retention_time >= RT_window_expanded[1] &
+                                 temp$retention_time <= RT_window_expanded[2]),]
+            if(use_IM_data == T) {
+              temp <- temp[which(temp$inv_ion_mobility >= IM_window[1] &
+                                   temp$inv_ion_mobility <= IM_window[2]),]
+            }
+            temp$retention_time <- temp$retention_time/60
+            colnames(temp)[1:4] <- c("m.z","RT","Intensity","1/K0")
+            return(temp)
+          })
+          sub <- do.call(rbind,sub)
+
+        }else
+        {
+          RT_window <- c(features_select$RT[i]+RT_correction-(features_select$RT_length[i]),features_select$RT[i]+RT_correction+(features_select$RT_length[i]))
+          IM_window <- c(features_select$Inv_K0[i]+IM_correction-(features_select$Inv_K0_length[i]),features_select$Inv_K0[i]+IM_correction+(features_select$Inv_K0_length[i]))
+          mz_window <- c(features_select$m.z_range_min[i] + mz_correction,
+                         features_select$m.z_range_max[i] + mz_correction)
+
+          #get frames
+          frames <- dat_ms1_frames$Id[which(dat_ms1_frames$Time >= RT_window[1] & dat_ms1_frames$Time <= RT_window[2])]
+
+          #get peaks
+          sub <- lapply(frames,function(x) {
+            temp <- dat[x,c('mz','retention_time','intensity','inv_ion_mobility')]
+            temp <- temp[which(temp$mz >= mz_window_expanded[1] &
+                                 temp$mz <= mz_window_expanded[2]),]
+            temp <- temp[which(temp$retention_time >= RT_window_expanded[1] &
+                                 temp$retention_time <= RT_window_expanded[2]),]
+            temp <- temp[which(temp$inv_ion_mobility >= IM_window_expanded[1] &
+                                 temp$inv_ion_mobility <= IM_window_expanded[2]),]
+            temp$retention_time <- temp$retention_time/60
+            colnames(temp)[1:4] <- c("m.z","RT","Intensity","1/K0")
+            return(temp)
+          })
+          sub <- do.call(rbind,sub)
+        }
+
+        if(nrow(sub)>0)
+        {
+          res <- NULL
+          if(peak_detection == T)
+          {
+            if(plots == T)
+            {
+              grDevices::pdf(base::paste(path,"/2Dpeakselection/",Sample_ID,"/",features_select$Feature_name[i],".pdf",sep=""))
+            }
+
+            res <- feature_2D_peak_selection(mz_bw=0.01,all_ion_data = sub,selected_features = features_select[i,],cur_sample = Sample_ID,known_RT = known_RTs[i],delta_mz = delta_mz,delta_rt=delta_rt,max_delta_RT = 2*delta_rt,max_delta_mz = 3*delta_mz,peak_min_ion_count = peak_min_ion_count,n_raster_dens_matrix = kde_resolution,num_peaks_store=num_peaks_store,plot = plots,MassSpec_mode = MassSpec_mode,delta_im = delta_im,IM_window_expand_factor=IM_window_expand_factor,use_IM_data=use_IM_data)
+
+            if(plots == T)
+            {
+              grDevices::dev.off()
+            }
+            if(plots==F) ###store graphs in list
+            {
+              #graph_peaks[[as.character(features_select$Feature_name[i])]] <- res$graph
+            }
+            res$graph <- NULL
+          }else ###no peak detection
+          {
+            res <- feature_no_peak_selection(all_ion_data = sub,selected_features = features_select[i,],cur_sample = Sample_ID,num_peaks_store=num_peaks_store,MassSpec_mode = MassSpec_mode,use_IM_data=use_IM_data)
+          }
+
+          ###check if any ions are available in any window
+          temp <- unlist(res)
+
+          if(any(temp[grepl("ion_count",names(temp))]>0))
+          {
+            if(peak_detection == F) ##no peak detection - simply sum all ion intensities within expected window
+            {
+              ####all ions
+              m.z_window_final <- c(res$Standard$Peak_info$mz_window_lower,res$Standard$Peak_info$mz_window_upper)
+              RT_window_final <- c(res$Standard$Peak_info$RT_window_lower,res$Standard$Peak_info$RT_window_upper)
+              res_int_total <- res$Standard$ion_data$Intensity
+              res_mz_total <- res$Standard$ion_data$m.z
+              res_rt_total <- res$Standard$ion_data$RT
+              res_isotope_total <- res$Standard$ion_data$isotope
+              length_data_total <- length(res_int_total)
+              IM_window_final <- c(res$Standard$Peak_info$IM_window_lower,res$Standard$Peak_info$IM_window_upper)
+              res_im_total <- res$Standard$ion_data$`1/K0`
+
+              ###determine which ions are showing an intensity above the background signal intensity
+              if(ion_intensity_cutoff == T)
+              {
+                res$Standard$ion_data$signal_background <- ifelse(base::log2(res$Standard$ion_data$Intensity) > mean_background_ion_intensity_model[i,Sample_ID]+2*sd_background_ion_intensity[1,Sample_ID],1,0)
+
+                res_int_signal <- res_int_total[which(res$Standard$ion_data$signal_background == 1)]
+                res_mz_signal <- res_mz_total[which(res$Standard$ion_data$signal_background == 1)]
+                res_rt_signal <- res_rt_total[which(res$Standard$ion_data$signal_background == 1)]
+                res_isotope_signal <- res_isotope_total[which(res$Standard$ion_data$signal_background == 1)]
+                length_data_signal <- length(res_int_signal)
+
+                ###save signal Intensities
+                if(length(res_int_signal)>0)
+                {
+
+                  data.table::set(Intensities_signal_background,i=as.integer(1:8),j=as.integer(i),value=list(c(log10(sum(res_int_signal)),
+                                                                                                               length(res_int_signal),
+                                                                                                               mean(log10(res_int_signal),na.rm=T),
+                                                                                                               stats::sd(log10(res_int_signal),na.rm=T),
+                                                                                                               m.z_window_final[1],
+                                                                                                               m.z_window_final[2],
+                                                                                                               RT_window_final[1],
+                                                                                                               RT_window_final[2])))
+                }
+
+                ###save signal+background Intensities
+                if(length(res_int_total)>0)
+                {
+
+                  data.table::set(Intensities_signal_background,i=as.integer(1:8),j=as.integer(i),value=list(c(log10(sum(res_int_total)),
+                                                                                                               length(res_int_total),
+                                                                                                               mean(log10(res_int_total),na.rm=T),
+                                                                                                               stats::sd(log10(res_int_total),na.rm=T),
+                                                                                                               m.z_window_final[1],
+                                                                                                               m.z_window_final[2],
+                                                                                                               RT_window_final[1],
+                                                                                                               RT_window_final[2])))
+                }
+              }else ###no discrimination between signal and background ions ## save all ions
+              {
+                ###save signal+background Intensities
+                if(length(res_int_total)>0)
+                {
+                  data.table::set(Intensities,i=as.integer(1:8),j=as.integer(i),value=list(c(log10(sum(res_int_total)),
+                                                                                             length(res_int_total),
+                                                                                             mean(log10(res_int_total),na.rm=T),
+                                                                                             stats::sd(log10(res_int_total),na.rm=T),
+                                                                                             m.z_window_final[1],
+                                                                                             m.z_window_final[2],
+                                                                                             RT_window_final[1],
+                                                                                             RT_window_final[2])))
+                }
+              }
+
+              ###feature alignment Scoreing based on algorithm from DeMix-Q (Zhang, 2016) - use all ions
+              if(length_data_total > 0)
+              {
+                df <- base::data.frame(mz=res_mz_total,rt=res_rt_total,iso=res_isotope_total,int=res_int_total)
+                df_mono_isotope <- df[which(df$iso==0),]
+                df_isotope_1 <- df[which(df$iso==1),]
+                if(nrow(df_mono_isotope)>0)
+                {
+                  ###deviation from consensus feature
+                  max_mono <- which(df_mono_isotope$int == max(df_mono_isotope$int,na.rm=T))
+                  data.table::set(delta_T1,i=1L,j=as.integer(i),mean(df_mono_isotope$rt[max_mono],na.rm=T) - (features_select$RT[i]))
+                  data.table::set(delta_M1,i=1L,j=as.integer(i),mean(df_mono_isotope$mz[max_mono],na.rm=T) - (features_select$m.z[i]))
+                  if(nrow(df_isotope_1)>0)
+                  {
+                    ###deviation from monoisotopic ion to M+1 isotope ion
+                    max_iso_1 <- which(df_isotope_1$int == max(df_isotope_1$int,na.rm=T))
+                    data.table::set(delta_T2,i=1L,j=as.integer(i),mean(df_mono_isotope$rt[max_mono],na.rm=T) - mean(df_isotope_1$rt[max_iso_1],na.rm=T))
+                    data.table::set(delta_M2,i=1L,j=as.integer(i),(mean(df_mono_isotope$mz[max_mono],na.rm=T)+(iso_mult[1]/features_select$Charge[i])) - mean(df_isotope_1$mz[max_iso_1],na.rm=T))
+                  }
+                }
+              }
+            }else ###with peak detection
+            {
+              ###store up to num_peaks_store potential peak windows + the original expected window
+              num_peaks <- length(which(names(res) != "Standard" & names(res) != "graph"))
+              for(p in names(res)[which(names(res) != "graph")])
+              {
+                m.z_window_final <- c(res[[p]]$Peak_info$mz_window_lower,res[[p]]$Peak_info$mz_window_upper)
+                RT_window_final <- c(res[[p]]$Peak_info$RT_window_lower,res[[p]]$Peak_info$RT_window_upper)
+
+                res_int_total <- res[[p]]$ion_data$Intensity
+                res_mz_total <- res[[p]]$ion_data$m.z
+                res_rt_total <- res[[p]]$ion_data$RT
+                res_isotope_total <- res[[p]]$ion_data$isotope
+                length_data_total <- length(res_int_total)
+
+                IM_window_final <- c(res$Standard$Peak_info$IM_window_lower,res$Standard$Peak_info$IM_window_upper)
+                res_im_total <- res$Standard$ion_data$`1/K0`
+
+                ###determine which ions are showing an intensity above the background signal intensity
+                if(ion_intensity_cutoff == T)
+                {
+                  res[[p]]$ion_data$signal_background <- ifelse(base::log2(res[[p]]$ion_data$Intensity) > mean_background_ion_intensity_model[i,Sample_ID]+2*sd_background_ion_intensity[1,Sample_ID],1,0)
+
+                  res_int_signal <- res_int_total[which(res[[p]]$ion_data$signal_background == 1)]
+                  res_mz_signal <- res_mz_total[which(res[[p]]$ion_data$signal_background == 1)]
+                  res_rt_signal <- res_rt_total[which(res[[p]]$ion_data$signal_background == 1)]
+                  res_isotope_signal <- res_isotope_total[which(res[[p]]$ion_data$signal_background == 1)]
+                  length_data_signal <- length(res_int_signal)
+
+                  ###save signal Intensities
+                  if(length(res_int_signal)>0)
+                  {
+                    data.table::set(peaks_quant[[p]]$Intensities,i=as.integer(1:10),j=as.integer(i),value=list(c(log10(sum(res_int_signal)),
+                                                                                                                 length(res_int_signal),
+                                                                                                                 mean(log10(res_int_signal),na.rm=T),
+                                                                                                                 stats::sd(log10(res_int_signal),na.rm=T),
+                                                                                                                 m.z_window_final[1],
+                                                                                                                 m.z_window_final[2],
+                                                                                                                 RT_window_final[1],
+                                                                                                                 RT_window_final[2],
+                                                                                                                 num_peaks,
+                                                                                                                 res[[p]]$Peak_info$known_peak)))
+                  }
+
+                  ###save signal+background Intensities
+                  if(length(res_int_total)>0)
+                  {
+                    data.table::set(peaks_quant[[p]]$Intensities_signal_background,i=as.integer(1:10),j=as.integer(i),value=list(c(log10(sum(res_int_total)),
+                                                                                                                                   length(res_int_total),
+                                                                                                                                   mean(log10(res_int_total),na.rm=T),
+                                                                                                                                   stats::sd(log10(res_int_total),na.rm=T),
+                                                                                                                                   m.z_window_final[1],
+                                                                                                                                   m.z_window_final[2],
+                                                                                                                                   RT_window_final[1],
+                                                                                                                                   RT_window_final[2],
+                                                                                                                                   num_peaks,
+                                                                                                                                   res[[p]]$Peak_info$known_peak)))
+                  }else ###no intensity at all then at least save standard information
+                  {
+                    data.table::set(peaks_quant[[p]]$Intensities_signal_background,i=as.integer(1:10),j=as.integer(i),value=list(c(NA,
+                                                                                                                                   length(res_int_total),
+                                                                                                                                   NA,
+                                                                                                                                   NA,
+                                                                                                                                   m.z_window_final[1],
+                                                                                                                                   m.z_window_final[2],
+                                                                                                                                   RT_window_final[1],
+                                                                                                                                   RT_window_final[2],
+                                                                                                                                   num_peaks,
+                                                                                                                                   res[[p]]$Peak_info$known_peak)))
+                  }
+                }else ###no discrimination between signal and background ions ## save all ions
+                {
+                  ###save signal+background Intensities
+                  if(length(res_int_total)>0)
+                  {
+                    data.table::set(Intensities,i=as.integer(1:10),j=as.integer(i),value=list(c(log10(sum(res_int_total)),
+                                                                                                length(res_int_total),
+                                                                                                mean(log10(res_int_total),na.rm=T),
+                                                                                                stats::sd(log10(res_int_total),na.rm=T),
+                                                                                                m.z_window_final[1],
+                                                                                                m.z_window_final[2],
+                                                                                                RT_window_final[1],
+                                                                                                RT_window_final[2],
+                                                                                                num_peaks,
+                                                                                                res[[p]]$Peak_info$known_peak)))
+                  }else ###no intensity at all then at least save standard information
+                  {
+                    data.table::set(Intensities,i=as.integer(1:10),j=as.integer(i),value=list(c(NA,
+                                                                                                length(res_int_total),
+                                                                                                NA,
+                                                                                                NA,
+                                                                                                m.z_window_final[1],
+                                                                                                m.z_window_final[2],
+                                                                                                RT_window_final[1],
+                                                                                                RT_window_final[2],
+                                                                                                num_peaks,
+                                                                                                res[[p]]$Peak_info$known_peak)))
+                  }
+                }
+
+                ###feature alignment Scoreing based on algorithm from DeMix-Q (Zhang, 2016) - use all ions
+                if(length_data_total > 0)
+                {
+                  df <- base::data.frame(mz=res_mz_total,rt=res_rt_total,iso=res_isotope_total,int=res_int_total)
+                  df_mono_isotope <- df[which(df$iso==0),]
+                  df_isotope_1 <- df[which(df$iso==1),]
+                  if(nrow(df_mono_isotope)>0)
+                  {
+                    ###deviation from consensus feature
+                    max_mono <- which(df_mono_isotope$int == max(df_mono_isotope$int,na.rm=T))
+                    data.table::set(peaks_quant[[p]]$delta_T1,i=1L,j=as.integer(i),mean(df_mono_isotope$rt[max_mono],na.rm=T) - (features_select$RT[i]))
+                    data.table::set(peaks_quant[[p]]$delta_M1,i=1L,j=as.integer(i),mean(df_mono_isotope$mz[max_mono],na.rm=T) - (features_select$m.z[i]))
+                    if(nrow(df_isotope_1)>0)
+                    {
+                      ###deviation from monoisotopic ion to M+1 isotope ion
+                      max_iso_1 <- which(df_isotope_1$int == max(df_isotope_1$int,na.rm=T))
+                      data.table::set(peaks_quant[[p]]$delta_T2,i=1L,j=as.integer(i),mean(df_mono_isotope$rt[max_mono],na.rm=T) - mean(df_isotope_1$rt[max_iso_1],na.rm=T))
+                      data.table::set(peaks_quant[[p]]$delta_M2,i=1L,j=as.integer(i),(mean(df_mono_isotope$mz[max_mono],na.rm=T)+(iso_mult[1]/features_select$Charge[i])) - mean(df_isotope_1$mz[max_iso_1],na.rm=T))
+                    }
+                  }
+                }
+
+              }
+            }
+          }
+
+        }
+
+        updatecounter <- updatecounter + 1
+        if(updatecounter >= 5)
+        {
+          time_elapsed <- difftime(Sys.time(),start_time,units="secs")
+          time_require <- (time_elapsed/(i/max))*(1-(i/max))
+          td <- lubridate::seconds_to_period(time_require)
+          time_require <- sprintf('%02d:%02d:%02d:%02d',  td@day, td@hour, lubridate::minute(td), round(lubridate::second(td),digits=0))
+
+          updatecounter <- 0
+          tcltk::setTkProgressBar(pb, i, label=base::paste( round(i/max*100, 0)," % done (",i,"/",max,", Time require: ",time_require,")",sep = ""))
+        }
+
+      }
+      close(pb)
+
+      if(peak_detection == F)
+      {
+        Intensities <- t(Intensities)
+        Intensities[Intensities == 0] <- NA
+
+        if(ion_intensity_cutoff == T)
+        {
+          Intensities_signal_background <- t(Intensities_signal_background)
+          Intensities_signal_background[Intensities_signal_background == 0] <- NA
+        }
+
+        delta_T1 <- t(delta_T1)
+        delta_T1[delta_T1 == 0] <- NA
+        delta_M1 <- t(delta_M1)
+        delta_M1[delta_M1 == 0] <- NA
+        delta_T2 <- t(delta_T2)
+        delta_T2[delta_T2 == 0] <- NA
+        delta_M2 <- t(delta_M2)
+        delta_M2[delta_M2 == 0] <- NA
+
+        peaks_quant <- list()
+        if(ion_intensity_cutoff == T)
+        {
+          peaks_quant[[1]] <- list(Intensities=Intensities,
+                                   Intensities_signal_background=Intensities_signal_background,
+                                   delta_T1=delta_T1,
+                                   delta_T2=delta_T2,
+                                   delta_M1=delta_M1,
+                                   delta_M2=delta_M2)
+        }else
+        {
+          peaks_quant[[1]] <- list(Intensities=Intensities,
+                                   delta_T1=delta_T1,
+                                   delta_T2=delta_T2,
+                                   delta_M1=delta_M1,
+                                   delta_M2=delta_M2)
+        }
+
+        return(list(peaks_quant=peaks_quant,graph_peaks=graph_peaks))
+
+      }else
+      {
+        for(p in 1:(num_peaks_store+1))
+        {
+          peaks_quant[[p]]$Intensities <- t(peaks_quant[[p]]$Intensities)
+          peaks_quant[[p]]$Intensities[peaks_quant[[p]]$Intensities == 0] <- NA
+
+          peaks_quant[[p]]$Intensities_signal_background <- t(peaks_quant[[p]]$Intensities_signal_background)
+          peaks_quant[[p]]$Intensities_signal_background[peaks_quant[[p]]$Intensities_signal_background == 0] <- NA
+
+          peaks_quant[[p]]$delta_T1 <- t(peaks_quant[[p]]$delta_T1)
+          peaks_quant[[p]]$delta_T1[peaks_quant[[p]]$delta_T1 == 0] <- NA
+          peaks_quant[[p]]$delta_M1 <- t(peaks_quant[[p]]$delta_M1)
+          peaks_quant[[p]]$delta_M1[peaks_quant[[p]]$delta_M1 == 0] <- NA
+          peaks_quant[[p]]$delta_T2 <- t(peaks_quant[[p]]$delta_T2)
+          peaks_quant[[p]]$delta_T2[peaks_quant[[p]]$delta_T2 == 0] <- NA
+          peaks_quant[[p]]$delta_M2 <- t(peaks_quant[[p]]$delta_M2)
+          peaks_quant[[p]]$delta_M2[peaks_quant[[p]]$delta_M2 == 0] <- NA
+        }
+
+        return(list(peaks_quant=peaks_quant,graph_peaks=graph_peaks))
+
+      }
+
     }
 
     ####Function to call get_intensities and finally save resulting table as .tab data table
     extract_intensities <- function(Sample_ID,features_select,path_to_raw,path_to_output_folder,RT_calibration,mz_calibration,peak_detection,ion_intensity_cutoff,mean_background_ion_intensity_model,sd_background_ion_intensity,peak_min_ion_count,kde_resolution,num_peaks_store,plots,MassSpec_mode,use_IM_data)
     {
-      #suppressWarnings(suppressMessages(library(data.table,quietly = T)))
-
       res <- get_intensities(Sample_ID,path = path_to_raw,features_select=features_select,RT_calibration=RT_calibration,mz_calibration=mz_calibration,peak_detection=peak_detection,ion_intensity_cutoff = ion_intensity_cutoff,mean_background_ion_intensity_model=mean_background_ion_intensity_model,sd_background_ion_intensity=sd_background_ion_intensity,peak_min_ion_count=peak_min_ion_count,kde_resolution=kde_resolution,num_peaks_store = num_peaks_store,plots=plots,MassSpec_mode=MassSpec_mode,use_IM_data=use_IM_data)
+
+      # if (MassSpec_mode == "Orbitrap") {
+      #   res <- get_intensities(Sample_ID,path = path_to_raw,features_select=features_select,RT_calibration=RT_calibration,mz_calibration=mz_calibration,peak_detection=peak_detection,ion_intensity_cutoff = ion_intensity_cutoff,mean_background_ion_intensity_model=mean_background_ion_intensity_model,sd_background_ion_intensity=sd_background_ion_intensity,peak_min_ion_count=peak_min_ion_count,kde_resolution=kde_resolution,num_peaks_store = num_peaks_store,plots=plots,MassSpec_mode=MassSpec_mode,use_IM_data=use_IM_data)
+      # }
+      # if (MassSpec_mode == "TIMSToF") {
+      #   prepare_rawTIMS()
+      #   res <- get_intensities_tims(Sample_ID,path = path_to_raw,features_select=features_select,RT_calibration=RT_calibration,mz_calibration=mz_calibration,peak_detection=peak_detection,ion_intensity_cutoff = ion_intensity_cutoff,mean_background_ion_intensity_model=mean_background_ion_intensity_model,sd_background_ion_intensity=sd_background_ion_intensity,peak_min_ion_count=peak_min_ion_count,kde_resolution=kde_resolution,num_peaks_store = num_peaks_store,plots=plots,MassSpec_mode=MassSpec_mode,use_IM_data=use_IM_data)
+      # }
 
       peaks_quant <- res$peaks_quant
       #peaks_graph <- res$graph_peaks
@@ -5906,7 +7053,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
     ####results in slower performance than for just 2 threads
     cl <- parallel::makeCluster(n_cores)#as.numeric(Sys.getenv('NUMBER_OF_PROCESSORS')))
     doParallel::registerDoParallel(cl)
-    res <- foreach::foreach(i=Sample_IDs) %dopar%
+    res <- foreach::foreach(i=Sample_IDs,.export = "prepare_rawTIMS") %dopar%
       {
         extract_intensities(Sample_ID = i,features_select = features_select,path_to_raw,path_to_output_folder,RT_calibration,mz_calibration,peak_detection=peak_detection,ion_intensity_cutoff = ion_intensity_cutoff,mean_background_ion_intensity_model=mean_background_ion_intensity_model,sd_background_ion_intensity=sd_background_ion_intensity,peak_min_ion_count=peak_min_ion_count,kde_resolution=kde_resolution,num_peaks_store=num_peaks_store,plots=plots,MassSpec_mode=MassSpec_mode,use_IM_data=use_IM_data)
       }
@@ -5923,18 +7070,19 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
   {
     ###check for which samples mzXML files are available
     mzXMLfiles <- list.files(base::paste(path_to_mzXML,"/all_ion_lists",sep=""))
-    mzXMLfiles <- mzXMLfiles[which(grepl(".RData",mzXMLfiles))]
+    mzXMLfiles <- mzXMLfiles[which(grepl("_all_ions.RData$",mzXMLfiles))]
     samples <- mzXMLfiles
     samples <- base::substr(samples,1,regexpr("_all_ions.RData",samples)-1)
   }
   if(MassSpec_mode == "TIMSToF")
   {
-    ###check for which samples extracted spectra files are available
+    path_to_mzXML <- path_to_extracted_spectra
+    path_to_extracted_spectra <- paste0(path_to_extracted_spectra,"/all_ion_lists")
+    #new approach using timsr does not require prior conversion of raw data
     mzXMLfiles <- list.files(path_to_extracted_spectra)
-    mzXMLfiles <- mzXMLfiles[which(grepl(".RData",mzXMLfiles))]
+    mzXMLfiles <- mzXMLfiles[which(grepl("_all_ions.RData$",mzXMLfiles))]
     samples <- mzXMLfiles
-    samples <- base::substr(samples,1,regexpr("_all_ions.RData",samples)-1)
-    path_to_mzXML <- base::gsub("\\\\all_ion_lists|/all_ion_lists","",path_to_extracted_spectra)
+    samples <- base::substr(samples,1,regexpr("_all_ions.RData$",samples)-1)
   }
 
   ###keep samples which should be actually requantified
@@ -5962,7 +7110,6 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
   samples <- samples[which(samples %in% Requant_samples)]
 
   ###Perform quantification of decoy features
-
   dir.create(base::paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep=""),showWarnings = F)
   available <- list.files(base::paste(path_to_mzXML,"/all_ion_lists/Extracted decoy intensities",output_file_names_add,sep=""))
   available <- base::gsub("_feature_quant.RData","",available)
@@ -5990,7 +7137,7 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
                                RT_calibration=RT_calibration,
                                mz_calibration=mz_calibration,
                                peak_detection=F,
-                               n_cores=ifelse(MassSpec_mode == "Orbitrap",n_cores,ifelse(n_cores >= 3,3,n_cores)),
+                               n_cores=n_cores,
                                MassSpec_mode = MassSpec_mode,
                                use_IM_data=use_IM_data)
     print(paste0(Sys.time()," Extract decoy intensities finished"))
@@ -6170,25 +7317,28 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
     select_decoys <- sample(decoy_features,1000)
     decoy_features_keep <- features[select_decoys,]
     ###now add isotope peaks of these decoy features
-    isotope_features <- decoy_features_keep
-    isotope_features$m.z <- ((isotope_features$m.z*isotope_features$Charge)+1.002054)/isotope_features$Charge
-    delta_mz <- isotope_features$m.z_range_max-isotope_features$m.z_range_min
-    isotope_features$m.z_range_max <- isotope_features$m.z+(delta_mz/2)
-    isotope_features$m.z_range_min <- isotope_features$m.z-(delta_mz/2)
-    isotope_features$Feature_name <- base::paste(isotope_features$Feature_name,"_i",sep="")
-    decoy_features_keep <- rbind(decoy_features_keep,isotope_features)
-
+    if (any(grepl("_i",features$Feature_name))) {
+      isotope_features <- decoy_features_keep
+      isotope_features$m.z <- ((isotope_features$m.z*isotope_features$Charge)+1.002054)/isotope_features$Charge
+      delta_mz <- isotope_features$m.z_range_max-isotope_features$m.z_range_min
+      isotope_features$m.z_range_max <- isotope_features$m.z+(delta_mz/2)
+      isotope_features$m.z_range_min <- isotope_features$m.z-(delta_mz/2)
+      isotope_features$Feature_name <- base::paste(isotope_features$Feature_name,"_i",sep="")
+      decoy_features_keep <- rbind(decoy_features_keep,isotope_features)
+    }
   }else ##less than 1000 decoys so just continue
   {
     decoy_features_keep <- features[decoy_features,]
     ###now add isotope peaks of these decoy features
-    isotope_features <- decoy_features_keep
-    isotope_features$m.z <- ((isotope_features$m.z*isotope_features$Charge)+1.002054)/isotope_features$Charge
-    delta_mz <- isotope_features$m.z_range_max-isotope_features$m.z_range_min
-    isotope_features$m.z_range_max <- isotope_features$m.z+(delta_mz/2)
-    isotope_features$m.z_range_min <- isotope_features$m.z-(delta_mz/2)
-    isotope_features$Feature_name <- base::paste(isotope_features$Feature_name,"_i",sep="")
-    decoy_features_keep <- rbind(decoy_features_keep,isotope_features)
+    if (any(grepl("_i",features$Feature_name))) {
+      isotope_features <- decoy_features_keep
+      isotope_features$m.z <- ((isotope_features$m.z*isotope_features$Charge)+1.002054)/isotope_features$Charge
+      delta_mz <- isotope_features$m.z_range_max-isotope_features$m.z_range_min
+      isotope_features$m.z_range_max <- isotope_features$m.z+(delta_mz/2)
+      isotope_features$m.z_range_min <- isotope_features$m.z-(delta_mz/2)
+      isotope_features$Feature_name <- base::paste(isotope_features$Feature_name,"_i",sep="")
+      decoy_features_keep <- rbind(decoy_features_keep,isotope_features)
+    }
   }
   ###remove all decoy features
   features <- features[-decoy_features,]
@@ -6229,11 +7379,14 @@ requantify_features <- function(path_to_features,path_to_mzXML=NA,path_to_input,
     extract_intensities_worker(Sample_IDs = as.character(samples),
                                features_select = features,
                                path_to_raw = base::paste(path_to_mzXML,"/all_ion_lists",sep=""),
-                               path_to_output_folder = base::paste(path_to_mzXML,"/all_ion_lists/Extracted feature intensities",output_file_names_add,sep=""),
+                               path_to_output_folder = base::paste(path_to_mzXML,
+                                                                   "/all_ion_lists/Extracted feature intensities",
+                                                                   output_file_names_add,
+                                                                   sep=""),
                                RT_calibration=RT_calibration,
                                mz_calibration=mz_calibration,
                                peak_detection=peak_detection,
-                               n_cores=ifelse(MassSpec_mode == "Orbitrap",n_cores,ifelse(n_cores >= 3,3,n_cores)),
+                               n_cores=n_cores,
                                ion_intensity_cutoff = T,
                                mean_background_ion_intensity_model = background_intensity_GAM_table_per_feature,
                                sd_background_ion_intensity = sd_background_intensity,

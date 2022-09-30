@@ -16,5 +16,5 @@ Resulting ion tables are stored in a sub-directory (all_ion_lists) of the raw fo
 Extract MS1-spectra from raw TIMS-ToF Pro data
 }
 \details{
-Convert MS1 spectra with TIMS information in raw files of Bruker TIMS-ToF Pro Mass Spectrometers into tables containing m/z, RT, inverse ion mobility and intensity information per ion. This process is currently very slow and can take several days even for a small data set. It also requires enough space on the home drive of the PC as well as at least 50 Gb of memory.
+Deprecated. Convert MS1 spectra with TIMS information in raw files of Bruker TIMS-ToF Pro Mass Spectrometers into tables containing m/z, RT, inverse ion mobility and intensity information per ion. Uses msconvert. This process is currently very slow and can take several days even for a small data set. It also requires enough space on the home drive of the PC as well as at least 50 Gb of memory.
 }

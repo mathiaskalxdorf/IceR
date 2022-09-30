@@ -173,7 +173,10 @@ run_panel <- fluidPage(
     ),
 
     column(3,
-           h3("Requantification settings")
+           checkboxGroupInput("requant_settings",
+                              label = h3("Requantification settings"),
+                              choices = list("Use Isotope ions" = 3),
+                              selected = 3)
            # checkboxGroupInput("requant_settings",
            #                    h3("Requantification settings"),
            #                    choices = list("RT calibration" = 1,
@@ -276,10 +279,9 @@ run_all_processes <- function(settings_list)
 {
   align_unknown <- F#ifelse(any(settings_list$alignment_settings == "1"),T,F)
   only_unmodified <- F#ifelse(any(settings_list$alignment_settings == "2"),T,F)
-
   RT_calibration <- T#ifelse(any(settings_list$requant_settings == "1"),T,F)
   mz_calibration <- T#ifelse(any(settings_list$requant_settings == "2"),T,F)
-  use_isotopes <- T#ifelse(any(settings_list$requant_settings == "3"),T,F)
+  use_isotopes <- ifelse(any(settings_list$requant_settings == "3"),T,F)
   intensity_correction <- T#ifelse(any(settings_list$requant_settings == "4"),T,F)
   peak_detection <- T#ifelse(any(settings_list$requant_settings == "5"),T,F)
   add_PMPs <- F#ifelse(any(settings_list$requant_settings == "6"),T,F)
@@ -325,10 +327,10 @@ run_all_processes <- function(settings_list)
   path_to_mzXML <- NA
   if(MassSpec_mode == "TIMSToF")
   {
-    path_to_extracted_spectra <- paste(settings_list$Raw_folder,"/","all_ion_lists",sep="")
+    path_to_extracted_spectra <- paste(settings_list$Raw_folder,sep="")
   }else
   {
-    path_to_mzXML <- paste(settings_list$Raw_folder,"/","mzXML",sep="")
+    path_to_mzXML <- paste(settings_list$Raw_folder,"/mzXML",sep="")
   }
 
   max_steps <- 4
@@ -411,7 +413,7 @@ run_all_processes <- function(settings_list)
 
     sample_list <- list.files(settings_list$Raw_folder)
     sample_list <- sample_list[which(grepl("\\.raw|\\.d",sample_list))]
-    sample_list_process <- sample_list[which(!grepl("Library|Lib",sample_list))]
+    sample_list_process <- sample_list#[which(!grepl("Library|Lib",sample_list))]
     Raw_files <- data.frame(Raw_files=sample_list,Requantified=ifelse(sample_list %in% sample_list_process,T,F))
 
     SaveExcel(list(Parameters=Parameters,Raw_files=Raw_files),File = paste(path_to_output,"/Parameters.xlsx",sep=""))
@@ -421,6 +423,7 @@ run_all_processes <- function(settings_list)
     ###Convert raw files
     if(MassSpec_mode == "Orbitrap")
     {
+      print(paste(Sys.time(),"Convert raw Orbitrap data"))
       #Convert into mzXML
       cur_step <- cur_step + 1
       setProgress(cur_step,message="Convert raw files to mzXML")
@@ -432,17 +435,18 @@ run_all_processes <- function(settings_list)
       print(paste(Sys.time(),"Preparation of mzXMLs finished"))
     }else
     {
+      print(paste(Sys.time(),"Convert raw timsToF Pro data"))
       cur_step <- cur_step + 1
-      setProgress(cur_step,message="Extract MS1 spectra from raw files")
-      convert_rawTIMS(path_to_raw=settings_list$Raw_folder)
-      print(paste(Sys.time(),"Extraction finished"))
+      setProgress(cur_step,message="Convert raw timsToF Pro data")
+      convert_rawTIMS_timsr(path_to_raw=settings_list$Raw_folder)
+      print(paste(Sys.time(),"Conversion finished"))
     }
 
     ###Align features
     cur_step <- cur_step + 1
     setProgress(cur_step,message="Perform feature alignment")
     sample_list <- list.files(settings_list$Raw_folder)
-    sample_list <- sample_list[which(grepl("\\.raw|\\.d",sample_list))]#& !grepl("Library|Lib",sample_list)
+    sample_list <- sample_list[which(grepl("\\.raw|\\.d",sample_list))]
     sample_list <- gsub("\\.raw|\\.d","",sample_list)
 
     if(multiplicity == 2)
@@ -755,7 +759,7 @@ server <- function(input, output,session)
                           collapse_mz = 0.002,
                           analysis_name = input$Analysis_name,
                           #alignment_settings = input$alignment_settings,
-                          #requant_settings = input$requant_settings,
+                          requant_settings = input$requant_settings,
                           Alignment_score_cut = 0.05,#input$Alignment_score_cut,
                           Quant_pVal_cut = 0.05,#input$Quant_pVal_cut,
                           n_cores = input$n_cores,
@@ -827,6 +831,10 @@ server <- function(input, output,session)
       updateSliderInput(session, "n_cores", min = 1, max = 50, value = as.numeric(temp_settings$Setting[17]),step=1)
       updateSliderInput(session, "kde_resolution", min = 10, max = 200, value = as.numeric(temp_settings$Setting[23]),step=5)
       #updateSliderInput(session, "num_peaks_store", min = 1, max = 10, value = as.numeric(temp_settings$Setting[24]),step=1)
+
+      updateCheckboxGroupInput(session,"requant_settings",choices = list("Use Isotope ions" = 3),
+                               selected = selection)
+
 
       # updateCheckboxGroupInput(session,"requant_settings",choices = list("RT calibration" = 1,
       #                                                                    "m/z calibration" = 2,

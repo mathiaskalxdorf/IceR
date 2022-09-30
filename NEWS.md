@@ -1,3 +1,12 @@
+# IceR 1.3.0
+
+## New Features
+
+* Use package timsr to access Bruker timsToF Pro data instead of converting raw files using msconvert
+* Allow switch-off usage of +1 isotope features to increase speed
+
+---
+
 # IceR 1.2.6
 
 ## Fixes
